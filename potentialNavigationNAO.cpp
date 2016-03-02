@@ -244,8 +244,6 @@ void potentialNavigationNAO::run(){
                 double w = norm_w*ANGULAR_VEL_MAX;
 
                 //command NAO
-                cout << "v: " << v << endl;
-                cout << "w: " << w << endl;
                 motionProxy.move(v,0.0f,-w);
 
                 // ... toc
@@ -273,6 +271,10 @@ void potentialNavigationNAO::updateTcAndLowPass(){
 
     elapsed_tod = (end_tod.tv_sec + (double)end_tod.tv_usec /1000000.0)
           - (start_tod.tv_sec + (double)start_tod.tv_usec/1000000.0);
+
+    cout << "elapsed_tod: " << elapsed_tod << endl;
+    cout << "freq: " << 1.0/elapsed_tod << endl;
+
 
     start_tod = end_tod;
     double fc_ratio = 0.25;
