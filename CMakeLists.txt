@@ -1,11 +1,16 @@
 cmake_minimum_required(VERSION 2.8)
 project(potentialNavigationNAO C CXX)
 
-find_package( OpenCV REQUIRED )
+find_package( OpenCV 2.4.11 EXACT REQUIRED )
 find_package(qibuild)
 
-#add_definitions("-pthread")
-#SET (CMAKE_CXX_FLAGS                "-Wall -std=c++11 -g")
+#message("${OpenCV_DIR}")
+
+set(CMAKE_INSTALL_PREFIX /usr/local)
+set(CMAKE_PREFIX_PATH /usr/local)
+
+
+SET (CMAKE_CXX_FLAGS                "-std=c++0x")
 
 # Create a list of source files
 set(_srcs

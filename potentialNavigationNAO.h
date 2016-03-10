@@ -71,19 +71,33 @@ private:
     js_event* jse;
     joystick_state* js;
 
-
+    bool move_robot;
 
     //of_driving object
     of_driving drive;
     timeval start_tod, end_tod, tic,toc;
     double elapsed_tod;
 
+    ofstream cycle_f, cameraRate_f;
+
+    double v;
+    double w;
 
     void updateTcAndLowPass();
     void updateTilt(int);
     void enableRecording();
     void cleanAllActivities();
     void printTiltInfo();
+
+    short int catchState(char);
+    void getVelocityCommands();
+    double current_imageTime, previous_imageTime;
+    double curtime;
+
+    string full_path;
+    unsigned int fileSeq;
+    void openFiles();
+    void closeFiles();
 
 public:
 
@@ -92,7 +106,7 @@ public:
     virtual ~potentialNavigationNAO();
     virtual void init();
 
-    void setTiltHead();
+    void setTiltHead(char);
     void chooseCamera(int);
     void run();
 

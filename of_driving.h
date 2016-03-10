@@ -43,13 +43,15 @@ public:
 
 	//initialization of the sampling time
 	inline void setTc(double T_c) {Tc = T_c;}
-	inline void setImgLowPassFrequency(double f){img_lowpass_freq = f;}
-	inline void setBarLowPassFrequency(double f){bar_lowpass_freq = f;}
+    inline void setImgLowPassFrequency(double f){img_lowpass_freq = f;}
+    inline void setBarLowPassFrequency(double f){bar_lowpass_freq = f;}
+    inline double getImgLowPassFrequency(){return img_lowpass_freq;}
+    inline double getBarLowPassFrequency(){return bar_lowpass_freq;}
 
 	inline void set_tilt(double tilt) {camera_tilt = tilt;}
 
 	//run function - Real time image processing algorithm
-    void run(Mat& img, Mat& prev_img);
+    void run(Mat& img, Mat& prev_img, bool);
 
 	void setRectHeight(int rect_cmd);
 	//Print on the image he information about the current pan and tilt angles of the camera
@@ -67,10 +69,14 @@ public:
 	double R;
 
 	//initialize flows
-	void initFlows();
+    void initFlows(bool);
+
+    void openFiles(const string);
+    void closeFiles();
 
 
 private:
+
 
 	int area_ths;
 
@@ -163,7 +169,7 @@ private:
 	Matx21f p_bar;
 
 	//Navigation angle
-	float theta, theta_old;
+    double theta, theta_old;
 
 	//Affine Coefficients
 	Matx22f A;
@@ -202,7 +208,6 @@ private:
 
 	/** Variable used for video recording **/
     VideoWriter record_total;
-	bool save_video;
 
 	//flag to activate fake black corners
 	bool fake_corners;
@@ -210,8 +215,10 @@ private:
 	//scale factor for optcal flow
 	int of_scale;
 
-	/* Methods */
-    ;
+    ofstream nofilt_barFile, filt_barFile, theta_f;
+
+
+    /* Methods */
 
 	void computeOpticalFlowField(Mat&, Mat&);
 

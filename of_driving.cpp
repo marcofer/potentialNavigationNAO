@@ -2,7 +2,7 @@
 
 #include "math.h"
 #include <sys/time.h>
-
+#include <fstream>
 
 using namespace cv::gpu;
 
@@ -12,18 +12,17 @@ of_driving::of_driving(){
     Rm = 0.83;
     linear_vel = 0.0476;
     grad_scale = 1.0;
-    windows_size = 13.0;
+    windows_size = 13.0;//44.0;//13.0;
     maxLayer = 2;
-    epsilon = 0.8;
+    epsilon = 0.8;//0.4;//0.8;
     flowResolution = 4;
     iteration_num = 10;
-    of_iterations = 3;
-    save_video = true;
+    of_iterations = 3;//3;
 
-    open_erode = 4.9;
-    open_dilate = 4.9;
-    close_erode = 4.9;
-    close_dilate = 4.9;
+    open_erode = 1.0;//4.9;
+    open_dilate = 1.0;
+    close_erode = 1.0;
+    close_dilate = 1.0;
     of_alg = 3;
     of_scale = 1;
     RANSAC_imgPercent = 0.5;
@@ -73,7 +72,7 @@ void of_driving::set_imgSize(int w, int h){
 	img_height = h;
 }
 
-void of_driving::initFlows(){
+void of_driving::initFlows(bool save_video){
 	optical_flow = Mat::zeros(img_height,img_width,CV_32FC2);
 	old_flow = Mat::zeros(img_height,img_width,CV_32FC2);
 	dominant_plane = Mat::zeros(img_height,img_width,CV_8UC1);
@@ -114,7 +113,7 @@ void of_driving::initFlows(){
     //ROI_ransac = dominant_plane(rect_ransac);
 
     if(save_video){
-        record_total.open("total.avi", CV_FOURCC('D','I','V','X'),30.0, cvSize(3*img_width,2*img_height), true);
+        record_total.open("total.avi", CV_FOURCC('D','I','V','X'),15.0, cvSize(3*img_width,2*img_height), true);
         if( !record_total.isOpened() ) {
             cout << "VideoWriter failed to open!" << endl;
             }
@@ -271,7 +270,7 @@ void of_driving::plotPanTiltInfo(Mat& img, float tilt_cmd, float pan_cmd){
 
 }
 
-void of_driving::run(Mat& img, Mat& prev_img){
+void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
 
 
 	Rect rect_ransac(ROI_x,ROI_y,ROI_width,ROI_height);
@@ -289,7 +288,7 @@ void of_driving::run(Mat& img, Mat& prev_img){
 
 
 	if(windows_size%2 == 0){
-		windows_size += 2;
+        windows_size += 1;
 	}
 
 	int k = 0;
@@ -297,8 +296,11 @@ void of_driving::run(Mat& img, Mat& prev_img){
 
 	prev_img.copyTo(image);
 
-	cvtColor(img,GrayImg,CV_BGR2GRAY);
-	cvtColor(prev_img,GrayPrevImg,CV_BGR2GRAY);
+    //cvtColor(img,GrayImg,CV_BGR2GRAY);
+    //cvtColor(prev_img,GrayPrevImg,CV_BGR2GRAY);
+    img.copyTo(GrayImg);
+    prev_img.copyTo(GrayPrevImg);
+
 
 	GpuMat gpu_prevImg(GrayPrevImg);
 	GpuMat gpu_Img(GrayImg);
@@ -371,7 +373,7 @@ void of_driving::run(Mat& img, Mat& prev_img){
 	
 
 	/*** MULTI-THREADED DISPLAY ***/
-	parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,dominantHull,gradient_field,p_bar,angular_vel,total,rect_ransac));
+    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,dominantHull,gradient_field,p_bar,angular_vel,total,rect_ransac, theta));
     if(save_video){
         record_total.write(total);
     }//*/
@@ -801,6 +803,7 @@ void of_driving::computeControlForceOrientation(){
 	Point2f pbar(p_bar(0),p_bar(1));
 	Point2f noFilt_pbar(pbar);
 
+
 	p_bar(0)  = low_pass_filter(pbar.x,px_old,Tc,1.0/bar_lowpass_freq);
     p_bar(1)  = low_pass_filter(pbar.y,py_old,Tc,1.0/bar_lowpass_freq);
 
@@ -809,10 +812,15 @@ void of_driving::computeControlForceOrientation(){
 
 	pbar.x = p_bar(0);
 	pbar.y = p_bar(1);
-	
+
+
+    nofilt_barFile << noFilt_pbar.x << ", " << noFilt_pbar.y << "; " << endl;
+    filt_barFile << pbar.x << ", " << pbar.y << "; " << endl;
+
+
 	Point2f y(0,-1);
 
-	if(norm(pbar) > 0.0/*0.25//*/){
+    if(norm(pbar) > 5){
 		theta = pbar.dot(y);
 		theta /= (norm(pbar)*norm(y));
 		theta = acos(theta);
@@ -825,8 +833,16 @@ void of_driving::computeControlForceOrientation(){
 		theta = 0.0;
 	}
 
-	//theta = low_pass_filter(theta,theta_old,Tc,1.0/ctrl_lowpass_freq);
+    if(theta < 0){ // this is a remapping of the theta range from [-pi,pi] returned by arccos to [-pi/2,pi/2]
+        theta += 2*M_PI;
+    }
+
+    theta_f << theta << "; " << endl;
+
+    //theta = low_pass_filter(theta,theta_old,Tc,1.0/ctrl_lowpass_freq);
 	theta_old = theta;
+    //cout << "theta: " << theta*180.0/M_PI << endl;
+
 }
 
 
@@ -835,6 +851,7 @@ void of_driving::computeRobotVelocities(){
 	double R = Rm*sin(theta);
 	angular_vel = R ;
 
+    //cout << "w: " << angular_vel << endl;
 	//R = low_pass_filter(R,Rold,Tc,1.0/ctrl_lowpass_freq);
 	//Rold = R;
 
@@ -872,14 +889,14 @@ Mat of_driving::displayImages(Mat& img){
 	img.copyTo(cf_img);
 	potential_img = Mat::ones(img_height,img_width,CV_8UC1)*255;
 
-	try{
+    /*try{
 	cvtColor(img,gImg,CV_BGR2GRAY);
 	cvtColor(gImg,u_img,CV_GRAY2BGR);
 	cvtColor(gImg,p_img,CV_GRAY2BGR);
     }
     catch(cv::Exception &e){
     	cerr << "cvtColor in displayImages" << endl;
-    }
+    }//*/
     
     smoothed_plane.copyTo(gradient_img);
     cvtColor(gradient_img,gradient_img,CV_GRAY2BGR);
@@ -911,7 +928,7 @@ Mat of_driving::displayImages(Mat& img){
 	Mat total = Mat::zeros(2*img_height,3*img_width,CV_8UC3);
 	Mat dp_img, sp_img;
 	cvtColor(dominant_plane,dp_img,CV_GRAY2BGR);
-	cvtColor(smoothed_plane,sp_img,CV_GRAY2BGR);
+    cvtColor(smoothed_plane,sp_img,CV_GRAY2BGR);
 	cvtColor(potential_img,potential_img,CV_GRAY2BGR);
 
 	u_img.copyTo(total(Rect(0,0,img_width,img_height)));
@@ -945,14 +962,26 @@ Mat of_driving::displayImages(Mat& img){
 	//imshow(flow_type,total);
 	//imshow("dominant plane",dp_img);
 
-	if(save_video){
+    /*if(save_video){
 		record_total.write(total);
-	}
+    }//*/
 
 
 	return total;
 }
 
+
+void of_driving::openFiles(const string full_path){
+    nofilt_barFile.open((full_path + "nofiltp.txt").c_str(),ios::app);
+    filt_barFile.open((full_path + "filtp.txt").c_str(),ios::app);
+    theta_f.open((full_path + "theta.txt").c_str(),ios::app);
+}
+
+void of_driving::closeFiles(){
+    nofilt_barFile.close();
+    filt_barFile.close();
+    theta_f.close();
+}
 
 
 //----DEPRECATED-----------------------------------//

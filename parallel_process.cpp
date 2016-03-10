@@ -146,7 +146,9 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
         
         if(k == 0){
             Mat u_img, gImg;
-            cvtColor(img,gImg,CV_BGR2GRAY);
+            //cvtColor(img,gImg,CV_BGR2GRAY);
+            img.copyTo(gImg);
+
             cvtColor(gImg,u_img,CV_GRAY2BGR);
 
             for (int i = 0 ; i < img.rows ; i+= flowResolution*2){
@@ -163,7 +165,8 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
         if(k == 1){
             Mat p_img, gImg;
-            cvtColor(img,gImg,CV_BGR2GRAY);
+            //cvtColor(img,gImg,CV_BGR2GRAY);
+            img.copyTo(gImg);
             cvtColor(gImg,p_img,CV_GRAY2BGR);
 
             for (int i = 0 ; i < img.rows ; i+= flowResolution*2){
@@ -211,6 +214,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
         if(k == 5){
             Mat cf_img;
             img.copyTo(cf_img);
+            cvtColor(cf_img,cf_img,CV_GRAY2BGR);
             Point2f center(img.cols/2,img.rows/2);
             Point2f bar_center(img.cols/2,img.rows/2);
             Point2f pb(p_bar(0),p_bar(1));
@@ -258,10 +262,23 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
             string text_str;
             ostringstream convert;
+            Size theta_size, thetavalue_size;
             Size v_size, vvalue_size, ms_size;
             Size w_size, wvalue_size, rads_size;
             double font_scale = 0.9;
             double font_scale2 = 0.6;
+
+            text_str = "";
+            text_str = "theta = ";
+            theta_size = getTextSize(text_str,1,font_scale,1,0);
+            putText(cf_img, text_str,Point(10,v2.y - theta_size.height - 10),1,font_scale,Scalar(255,255,255),1,CV_AA);
+
+            text_str = "";
+            convert << setprecision(4) << theta;
+            text_str = convert.str();
+            thetavalue_size = getTextSize(text_str,1,font_scale,1,0);
+            putText(cf_img, text_str,Point(theta_size.width + 10,v2.y - theta_size.height - 10),1,font_scale,Scalar(255,255,255),1,CV_AA);
+
             text_str = "";
             text_str = "v = ";
             v_size = getTextSize(text_str,1,font_scale,1,0);
