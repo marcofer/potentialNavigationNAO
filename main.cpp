@@ -15,11 +15,13 @@
 
 #include "potentialNavigationNAO.h"
 #include <qi/os.hpp>
+#include <opencv2/core/core.hpp>
 
 using namespace std;
 
 int main(int argc, char* argv[])
 {
+    cout << cv::getBuildInformation();
     int pport = 9559;
     //int camera_flag = -1;
     string pip = "127.0.0.1";

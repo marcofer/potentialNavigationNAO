@@ -24,6 +24,9 @@
 
 #include "parallel_process.h"
 
+#define ANGULAR_VEL_MAX 0.83 //0.83
+#define LINEAR_VEL_MAX 0.0952 //(half max vel)
+
 using namespace std;
 using namespace cv;
 using namespace cv::gpu;
@@ -63,7 +66,11 @@ public:
 	inline double get_pan() {return pan_angle;}
     inline double get_linearVel() {return linear_vel;}
     inline double get_angularVel() {return angular_vel;}
-	inline double get_throttle() {return ankle_angle;}
+    inline double get_linVelMax() {return linear_vel;}
+    inline double get_angVelMax() {return Rm;}
+    inline double get_throttle() {return ankle_angle;}
+    inline double get_theta() {return theta;}
+
     void createWindowAndTracks();
 	//the control variable: steering velocity (or angular velocity?)
 	double R;
@@ -120,8 +127,8 @@ private:
 	double publishing_rate;
 
 	//linear velocity
-	double linear_vel;
-	double angular_vel;
+    double linear_vel;
+    double angular_vel;
 
 	double img_lowpass_freq;
 	double bar_lowpass_freq;
@@ -141,40 +148,53 @@ private:
 	//gradient scale factor
 	double grad_scale;
 
+    double field_weight;
+    int weight_int;
+
 	//erode/dilate scale factor
 	double open_erode, open_dilate, close_erode, close_dilate;
 	int open_erode_int, open_dilate_int, close_erode_int, close_dilate_int;
 
 	//optical flow field
-	Mat optical_flow, old_flow;
+    Mat optical_flow, old_flow;
+    Mat noFilt_of;
+    Mat atanMat;
 
 	//planar flow field
-	Mat planar_flow;
+    Mat planar_flow;
+    Mat noFilt_pf;
 
 
 	//dominant flow field
 	Mat dominant_plane, best_plane, old_plane;
-	Mat smoothed_plane;
+    Mat noFilt_dp, noFilt_best;
+
+    Mat smoothed_plane;
+    Mat noFilt_sp;
 
 	//Dominant plane convex hull
 	Mat dominantHull;
 
 	//Gradient vector field
-	Mat gradient_field;
+    Mat gradient_field;
+    Mat vortex_field;
+    Mat result_field, noFilt_rf;
+    Mat noFilt_gf, noFilt_vf;
+    Mat inverted_dp;
 
 	//Potential Field
 	Mat potential_field;
 
 	//Control Force 
 	Matx21f p_bar;
-
+    Matx21f noFilt_pbar;
 	//Navigation angle
     double theta, theta_old;
 
 	//Affine Coefficients
-	Matx22f A;
-	Matx21f b;
-	Mat Ab;
+    Matx22f A, nf_A;
+    Matx21f b, nf_b;
+    Mat Ab, noFilt_Ab;
 
 	bool control;
 
@@ -186,6 +206,7 @@ private:
 
 	//RANSAC inliers counter
 	int point_counter, best_counter;
+    int nf_point_counter, nf_best_counter;
 
 	//RANSAC iterations
 	int iteration_num;
@@ -215,7 +236,7 @@ private:
 	//scale factor for optcal flow
 	int of_scale;
 
-    ofstream nofilt_barFile, filt_barFile, theta_f;
+    ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f;
 
 
     /* Methods */
@@ -229,6 +250,7 @@ private:
 	void computeControlForceOrientation();
 
     void computeRobotVelocities();
+    void computeFlowDirection();
 
     Mat displayImages(Mat&);
 
@@ -260,6 +282,7 @@ double low_pass_filter(double in, double out_old, double Tc, double tau);
 double high_pass_filter(double in, double in_prev, double out_old, double Tc, double tau);
 void getFlowField(const Mat& u, const Mat& v, Mat& flowField);
 
+string type2str(int);
 
 void callbackButton(int,void*);
 

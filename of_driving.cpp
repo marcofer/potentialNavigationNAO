@@ -9,12 +9,14 @@ using namespace cv::gpu;
 enum OF_ALG{LK,FARNEBACK,GPU_LK_SPARSE,GPU_LK_DENSE,GPU_FARNEBACK,GPU_BROX};
 
 of_driving::of_driving(){
-    Rm = 0.83;
-    linear_vel = 0.0476;
+
+    Rm = ANGULAR_VEL_MAX/8.0;
+    linear_vel = LINEAR_VEL_MAX/2.0;
+
     grad_scale = 1.0;
     windows_size = 13.0;//44.0;//13.0;
     maxLayer = 2;
-    epsilon = 0.8;//0.4;//0.8;
+    epsilon = 0.7;//0.5//0.4;//0.8;
     flowResolution = 4;
     iteration_num = 10;
     of_iterations = 3;//3;
@@ -56,6 +58,9 @@ of_driving::of_driving(){
 	theta = 0.0;
 	theta_old = 0.0;
 
+    field_weight = 0.0; //0.0 = gradient field ; 1.0 = vortex field
+    weight_int = ((double)field_weight)*10;
+
 	gettimeofday(&start_plot,NULL);
 
 	cores_num = sysconf( _SC_NPROCESSORS_ONLN );
@@ -73,18 +78,33 @@ void of_driving::set_imgSize(int w, int h){
 }
 
 void of_driving::initFlows(bool save_video){
-	optical_flow = Mat::zeros(img_height,img_width,CV_32FC2);
-	old_flow = Mat::zeros(img_height,img_width,CV_32FC2);
+    optical_flow = Mat::zeros(img_height,img_width,CV_32FC2);
+    old_flow = Mat::zeros(img_height,img_width,CV_32FC2);
 	dominant_plane = Mat::zeros(img_height,img_width,CV_8UC1);
 	old_plane = Mat::zeros(img_height,img_width,CV_8UC1);
 	smoothed_plane = Mat::zeros(img_height,img_width,CV_8UC1);
 	dominantHull = Mat::zeros( img_height, img_width, CV_8UC1 );
 	best_plane = Mat::zeros(img_height,img_width,CV_8UC1);
 	planar_flow = Mat::zeros(img_height,img_width,CV_32FC2);
-	gradient_field = Mat::zeros(img_height,img_width,CV_32FC2);
-	potential_field = Mat::zeros(img_height,img_width,CV_32FC2);
-	point_counter = 0;
+    gradient_field = Mat::zeros(img_height,img_width,CV_32FC2);
+    vortex_field = Mat::zeros(img_height,img_width,CV_32FC2);
+    result_field = Mat::zeros(img_height,img_width,CV_32FC2);
+    potential_field = Mat::zeros(img_height,img_width,CV_32FC2);
+    inverted_dp = Mat::zeros(img_height,img_width,CV_8UC1);
+
+    noFilt_of = Mat::zeros(img_height,img_width,CV_32FC2);
+    noFilt_pf = Mat::zeros(img_height,img_width,CV_32FC2);
+    noFilt_dp = Mat::zeros(img_height,img_width,CV_8UC1);
+    noFilt_best = Mat::zeros(img_height,img_width,CV_8UC1);
+    noFilt_sp = Mat::zeros(img_height,img_width,CV_8UC1);
+    noFilt_gf = Mat::zeros(img_height,img_width,CV_32FC2);
+    noFilt_vf = Mat::zeros(img_height,img_width,CV_32FC2);
+    noFilt_rf = Mat::zeros(img_height,img_width,CV_32FC2);
+
+    point_counter = 0;
 	best_counter = 0;
+    nf_point_counter = 0;
+    nf_best_counter = 0;
 
 	area_ths = 50;
 
@@ -117,7 +137,7 @@ void of_driving::initFlows(bool save_video){
         if( !record_total.isOpened() ) {
             cout << "VideoWriter failed to open!" << endl;
             }
-    }
+    }//*/
 
 
     /*** GPU BROX OPTICAL FLOW ***/
@@ -180,7 +200,7 @@ void of_driving::createWindowAndTracks(){
 
     createTrackbar("winSize",of_alg_name,&windows_size,51,NULL);
 
-    if(of_alg != LK && of_alg != GPU_BROX){
+    /*if(of_alg != LK && of_alg != GPU_BROX){
         createTrackbar("iters",of_alg_name,&of_iterations,50,NULL);
     }
     else if(of_alg == GPU_BROX){
@@ -189,7 +209,7 @@ void of_driving::createWindowAndTracks(){
         createTrackbar("inner",of_alg_name,&inner,50,NULL);
         createTrackbar("outer",of_alg_name,&outer,5,NULL);
         createTrackbar("solver",of_alg_name,&solver,50,NULL);
-    }
+    }//*/
 
     //createTrackbar("pyr levels",of_alg_name,&maxLayer,5,NULL);
     createTrackbar("epsilon*100",of_alg_name,&eps_int,500,NULL);
@@ -201,6 +221,7 @@ void of_driving::createWindowAndTracks(){
     createTrackbar("O_dilat*10",of_alg_name,&open_dilate_int,200,NULL);
     createTrackbar("C_dilat*10",of_alg_name,&close_dilate_int,200,NULL);
     createTrackbar("C_erode*10",of_alg_name,&close_erode_int,200,NULL);//*/
+    createTrackbar("field weights",of_alg_name,&weight_int,10,NULL);//*/
     //createTrackbar("area_ths",of_alg_name,&area_ths,1000,NULL);
 
 
@@ -283,7 +304,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
 	open_dilate = (double)open_dilate_int/10.0;
 	close_erode = (double)close_erode_int/10.0;
 	close_dilate = (double)close_dilate_int/10.0;
-	
+    field_weight = (double)weight_int/10.0;
 	epsilon *= of_scale;
 
 
@@ -311,7 +332,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
     computeOpticalFlowField(GrayPrevImg,GrayImg);
     //computeOpticalFlowField(gpu_prevImg,gpu_Img);
 
-
+    //computeFlowDirection();
 
 	while(point_counter <= max_counter && k < iteration_num){
 
@@ -330,12 +351,19 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
 			dominant_plane.copyTo(best_plane);
 		}
 
+        if(nf_point_counter >= nf_best_counter){
+            nf_best_counter = point_counter;
+            noFilt_dp.copyTo(noFilt_best);
+        }
+
 		k++;
 	}
 
 	if(point_counter <= max_counter){
 		best_plane.copyTo(dominant_plane);
+        noFilt_best.copyTo(noFilt_dp);
 	}
+
 
     /// --- 2. Robust computation of affine coefficients with all the points belonging to the detected dominant plane 	
     estimateAffineCoefficients(true,GrayPrevImg,ROI_ransac,rect_ransac);//*/
@@ -373,7 +401,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
 	
 
 	/*** MULTI-THREADED DISPLAY ***/
-    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,dominantHull,gradient_field,p_bar,angular_vel,total,rect_ransac, theta));
+    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,dominantHull,result_field,p_bar,angular_vel,total,rect_ransac, theta, linear_vel, Rm, noFilt_pbar));
     if(save_video){
         record_total.write(total);
     }//*/
@@ -546,10 +574,13 @@ void of_driving::computeOpticalFlowField(Mat& prevImg, Mat& img){
 	optical_flow = optical_flow*of_scale;
 
 	/*dilate(optical_flow, optical_flow, getStructuringElement(MORPH_ELLIPSE, Size(10.0,10.0)));
-	erode(optical_flow, optical_flow, getStructuringElement(MORPH_ELLIPSE, Size(10.0,10.0)));
+    erode(optical_flow, optical_flow, getStructuringElement(MORPH_ELLIPSE, Size(10.0,10.0)));//*/
 
-   /*** LOW PASS FILTERING ***/
-	for (int i = 0 ; i < optical_flow.rows ; i ++){
+    /// Copy the optical flow field before filtering
+    optical_flow.copyTo(noFilt_of);
+
+    /*** LOW PASS FILTERING ***/
+    /*for (int i = 0 ; i < optical_flow.rows ; i ++){
 		Point2f* op_ptr = optical_flow.ptr<Point2f>(i);
 		Point2f* of_ptr = old_flow.ptr<Point2f>(i);
 		for (int j = 0 ; j < optical_flow.cols ; j ++){
@@ -562,7 +593,7 @@ void of_driving::computeOpticalFlowField(Mat& prevImg, Mat& img){
 		}
     }
 
-	optical_flow.copyTo(old_flow);//*/
+    optical_flow.copyTo(old_flow);//*/
 
 
 }
@@ -570,8 +601,8 @@ void of_driving::computeOpticalFlowField(Mat& prevImg, Mat& img){
 
 void of_driving::estimateAffineCoefficients(bool robust, Mat& gImg,Mat& ROI_ransac, Rect& rect_ransac){
 
-	vector<Point2f> prevSamples, nextSamples;
-	int i, j;
+    vector<Point2f> prevSamples, nextSamples, noFilt_prev, noFilt_next;
+    int i, j;
 
 	////if affine coefficients are retrieved by only three random points ...
 	if(!robust){ 
@@ -582,39 +613,65 @@ void of_driving::estimateAffineCoefficients(bool robust, Mat& gImg,Mat& ROI_rans
 
 			Point2f p(j,i);
 			Point2f* of_ptr = optical_flow.ptr<Point2f>(i);
-			Point2f p2(of_ptr[j] + p);
+            Point2f* noFilt_ofptr = noFilt_of.ptr<Point2f>(i);
+
+            Point2f p2(of_ptr[j] + p);
+            Point2f nfp(noFilt_ofptr[j] + p);
+
 			prevSamples.push_back(p);
 			nextSamples.push_back(p2);
+            noFilt_next.push_back(nfp);
 		}
 
-		Ab = getAffineTransform(prevSamples,nextSamples);
+        Ab = getAffineTransform(prevSamples,nextSamples);
+        noFilt_Ab = getAffineTransform(prevSamples,noFilt_next);
 
 	}
 	//// ... or affine coeffiencts have to be robustly estimated with all the points of the dominant plane		
 	else{
 		for (int i = 0 ; i < img_height ; i ++){
-			unsigned char* dp_ptr = dominant_plane.ptr<uchar>(i);
-			Point2f* of_ptr = optical_flow.ptr<Point2f>(i);
-			for (int j = 0 ; j < img_width ; j ++){
+            unsigned char* dp_ptr = dominant_plane.ptr<uchar>(i);
+            Point2f* of_ptr = optical_flow.ptr<Point2f>(i);
+
+            unsigned char* nf_dp_ptr = noFilt_dp.ptr<uchar>(i);
+            Point2f* nf_of_ptr = noFilt_of.ptr<Point2f>(i);
+
+            for (int j = 0 ; j < img_width ; j ++){
 				int val = dp_ptr[j];
+                int nf_val = nf_dp_ptr[j];
+
 				if(val == 255){
 					Point2f p(j,i);
 					Point2f p2(of_ptr[j] + p);
 					prevSamples.push_back(p);
 					nextSamples.push_back(p2);
 				}
+                if(nf_val == 255){
+                    Point2f p(j,i);
+                    Point2f p2(nf_of_ptr[j] + p);
+                    noFilt_prev.push_back(p);
+                    noFilt_next.push_back(p2);
+                }
 			}
 		}
 
-		if(!prevSamples.empty() && ! nextSamples.empty())
-			Ab = estimateRigidTransform(prevSamples,nextSamples,true);
+        if(!prevSamples.empty() && ! nextSamples.empty())
+            Ab = estimateRigidTransform(prevSamples,nextSamples,true);
+
+
+        if(!noFilt_prev.empty() && ! noFilt_next.empty())
+            noFilt_Ab = estimateRigidTransform(noFilt_prev,noFilt_next,true);
 
 	}
 
-	if(!Ab.empty()){
-		A = Ab(Rect(0,0,2,2));
-		b = Ab(Rect(2,0,1,2));
+    if(!Ab.empty()){
+        A = Ab(Rect(0,0,2,2));
+        b = Ab(Rect(2,0,1,2));
 	}	
+    if(!noFilt_Ab.empty()){
+        nf_A = noFilt_Ab(Rect(0,0,2,2));
+        nf_b = noFilt_Ab(Rect(2,0,1,2));
+    }
 }
 
 
@@ -640,9 +697,12 @@ void of_driving::estimateAffineCoefficients(bool robust, Mat& gImg,Mat& ROI_rans
 void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 
 	point_counter = 0;
+    nf_point_counter = 0;
 
 	/*** MULTI-THREADED ***/
-	parallel_for_(Range(0,cores_num),ParallelDominantPlaneBuild(cores_num,dominant_plane,old_plane,optical_flow,planar_flow,epsilon,Tc,img_lowpass_freq,A,b,dp_threshold));	
+    parallel_for_(Range(0,cores_num),ParallelDominantPlaneBuild(cores_num,dominant_plane,old_plane,optical_flow,planar_flow,epsilon,
+                                                                Tc,img_lowpass_freq,A,b,dp_threshold, noFilt_dp, noFilt_of, noFilt_pf,
+                                                                nf_A, nf_b));
 	
 
 	if(open_close){
@@ -721,6 +781,7 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 
 
     point_counter = countNonZero(ROI_ransac);//*/
+    nf_point_counter = countNonZero(noFilt_dp);
 
     //imshow("ROI_ransac",ROI_ransac);
     
@@ -771,41 +832,71 @@ void of_driving::computeGradientVectorField(){
     }//*/
 
 	/*** MULTI-THREADED GRADIENT FIELD CONSTRUCTION ***/
-    parallel_for_(Range(0,cores_num),ParallelGradientFieldBuild(cores_num, dominant_plane, smoothed_plane, gradient_field, grad_scale,GaussSize, sigmaX,ddepth)); 
+    parallel_for_(Range(0,cores_num),ParallelGradientFieldBuild(cores_num, dominant_plane, smoothed_plane, gradient_field,
+                                                                vortex_field, grad_scale,GaussSize, sigmaX,
+                                                                ddepth, noFilt_dp, noFilt_sp, noFilt_gf, noFilt_vf));
 
 }
 
 
 void of_driving::computeControlForceOrientation(){
-	Mat ROI;
+    Mat ROI;
+    Mat nfROI;
+    Mat resROI, nfResROI;
+    //ROI = gradient_field(Rect(0,0,img_width,img_height/2)).clone();
+    //nfROI = noFilt_gf(Rect(0,0,img_width,img_height/2)).clone();
 
-	ROI = gradient_field(Rect(0,0,img_width,img_height/2)).clone();
+    ROI = gradient_field(Rect(0,0,img_width,img_height/2));
+    nfROI = noFilt_gf(Rect(0,0,img_width,img_height/2));
+
+    /*result_field = gradient_field;
+    noFilt_rf = noFilt_gf;//*/
+
+    /*result_field = vortex_field;
+    noFilt_rf = noFilt_vf;//*/
+
+
+    result_field = (1.0 - field_weight)*gradient_field + field_weight*vortex_field;
+    noFilt_rf = noFilt_gf + noFilt_vf;//*/
+
+    resROI = result_field(Rect(0,0,img_width,img_height/2));
+    nfResROI = noFilt_rf(Rect(0,0,img_width,img_height/2));
 
 	p_bar = Matx21f(0,0);
+    noFilt_pbar = Matx21f(0,0);
 
     int rows = ROI.rows;
     int cols = ROI.cols;
 
-    if(ROI.isContinuous()){
+    if(ROI.isContinuous() && nfROI.isContinuous()){
         cols *= rows;
         rows = 1;
     }
 
 	for (int i = 0 ; i < rows ; i ++){
-		Point2f* roi_ptr = ROI.ptr<Point2f>(i);
-		for (int j = 0 ; j < cols ; j ++){
-			Matx21f vec(roi_ptr[j].x,roi_ptr[j].y);
-			p_bar += vec;
+        Point2f* roi_ptr = resROI.ptr<Point2f>(i);
+        Point2f* nf_roi_ptr = nfResROI.ptr<Point2f>(i);
+        for (int j = 0 ; j < cols ; j ++){
+            Matx21f vec(roi_ptr[j].x,roi_ptr[j].y);
+            Matx21f nf_vec(nf_roi_ptr[j].x,nf_roi_ptr[j].y);
+            p_bar += vec;
+            noFilt_pbar += nf_vec;
 		}
 	}
 
-	p_bar *= (1.0/(ROI.rows*ROI.cols));
-	Point2f pbar(p_bar(0),p_bar(1));
-	Point2f noFilt_pbar(pbar);
+    p_bar *= (1.0/(ROI.rows*ROI.cols));
+    noFilt_pbar *= (1.0/(ROI.rows*ROI.cols));
 
 
-	p_bar(0)  = low_pass_filter(pbar.x,px_old,Tc,1.0/bar_lowpass_freq);
-    p_bar(1)  = low_pass_filter(pbar.y,py_old,Tc,1.0/bar_lowpass_freq);
+    Point2f pbar(p_bar(0),p_bar(1));
+    Point2f noFilt_p(noFilt_pbar(0),noFilt_pbar(1));
+
+
+    //cout << "norm(p_bar): " << norm(pbar) << endl;
+    //cout << "norm(noFilt_p): " << norm(noFilt_p) << endl;
+
+    //p_bar(0)  = low_pass_filter(pbar.x,px_old,Tc,1.0/bar_lowpass_freq);
+    //p_bar(1)  = low_pass_filter(pbar.y,py_old,Tc,1.0/bar_lowpass_freq);//*/
 
 	px_old = p_bar(0);
 	py_old = p_bar(1);
@@ -814,33 +905,28 @@ void of_driving::computeControlForceOrientation(){
 	pbar.y = p_bar(1);
 
 
-    nofilt_barFile << noFilt_pbar.x << ", " << noFilt_pbar.y << "; " << endl;
+    nofilt_barFile << noFilt_p.x << ", " << noFilt_p.y << "; " << endl;
     filt_barFile << pbar.x << ", " << pbar.y << "; " << endl;
 
 
 	Point2f y(0,-1);
 
-    if(norm(pbar) > 5){
+    if(norm(pbar) > 5/*5//*/){
 		theta = pbar.dot(y);
 		theta /= (norm(pbar)*norm(y));
-		theta = acos(theta);
+        theta = acos(theta); //Principal arc cosine of x, in the interval [0,pi] radians. So, if we want to discriminate when the vector is on the left or right side, we need to check for the x component and
+                             //remap accordingly from the range [0,pi] to [0,2pi]
         if (p_bar(0) < 0){
-    		theta *= -1;
-		}
-
+            theta = 2*M_PI - theta;
+        }//*/
 	}
 	else{
 		theta = 0.0;
 	}
 
-    if(theta < 0){ // this is a remapping of the theta range from [-pi,pi] returned by arccos to [-pi/2,pi/2]
-        theta += 2*M_PI;
-    }
-
     theta_f << theta << "; " << endl;
 
     //theta = low_pass_filter(theta,theta_old,Tc,1.0/ctrl_lowpass_freq);
-	theta_old = theta;
     //cout << "theta: " << theta*180.0/M_PI << endl;
 
 }
@@ -851,6 +937,7 @@ void of_driving::computeRobotVelocities(){
 	double R = Rm*sin(theta);
 	angular_vel = R ;
 
+    angularVel_f << angular_vel << "; " << endl;
     //cout << "w: " << angular_vel << endl;
 	//R = low_pass_filter(R,Rold,Tc,1.0/ctrl_lowpass_freq);
 	//Rold = R;
@@ -863,6 +950,27 @@ void of_driving::computeRobotVelocities(){
     }
 
 	ankle_angle = 0.0;
+}
+
+void of_driving::computeFlowDirection(){
+
+    int rows = optical_flow.rows;
+    int cols = optical_flow.cols;
+
+    for (int i = 0 ; i < rows ; i ++){
+        Point2f* of_ptr = optical_flow.ptr<Point2f>(i);
+        unsigned char* atan_ptr = atanMat.ptr<uchar>(i);
+        for (int j = 0 ; j < cols ; j ++){
+            Point2f p(of_ptr[j]);
+            double dir = atan2(p.y,p.x);
+            if(dir < 0)
+                dir += 2*M_PI;
+            int udir = dir/(2*M_PI)*255;
+            atan_ptr[j] = udir;
+        }
+    }
+
+    imshow("atanMat",atanMat);
 }
 
 /*** SINGLE-THREADED DISPLAY FUNCTION ***/
@@ -970,17 +1078,43 @@ Mat of_driving::displayImages(Mat& img){
 	return total;
 }
 
+string type2str(int type) {
+  string r;
+
+  uchar depth = type & CV_MAT_DEPTH_MASK;
+  uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+  switch ( depth ) {
+    case CV_8U:  r = "8U"; break;
+    case CV_8S:  r = "8S"; break;
+    case CV_16U: r = "16U"; break;
+    case CV_16S: r = "16S"; break;
+    case CV_32S: r = "32S"; break;
+    case CV_32F: r = "32F"; break;
+    case CV_64F: r = "64F"; break;
+    default:     r = "User"; break;
+  }
+
+  r += "C";
+  r += (chans+'0');
+
+  return r;
+}
+
+
 
 void of_driving::openFiles(const string full_path){
     nofilt_barFile.open((full_path + "nofiltp.txt").c_str(),ios::app);
     filt_barFile.open((full_path + "filtp.txt").c_str(),ios::app);
     theta_f.open((full_path + "theta.txt").c_str(),ios::app);
+    angularVel_f.open((full_path + "angularVel.txt").c_str(),ios::app);
 }
 
 void of_driving::closeFiles(){
     nofilt_barFile.close();
     filt_barFile.close();
     theta_f.close();
+    angularVel_f.close();
 }
 
 
@@ -1017,7 +1151,9 @@ double low_pass_filter(double in, double out_old, double Tc, double tau){
 
     double out, alpha;
 
-    alpha = 1 / ( 1 + (tau/Tc));
+    //alpha = 1 / ( 1 + (tau/Tc));
+
+    alpha = Tc/tau;
 
     out = alpha * in + (1-alpha) * out_old;
 
@@ -1031,7 +1167,7 @@ double high_pass_filter(double in, double in_prev, double out_old, double Tc, do
 
     double out, alpha;
 
-    alpha = 1 / ( 1 + (tau/Tc));
+    //alpha = 1 / ( 1 + (tau/Tc));
 
     out = alpha *  out_old + alpha * (in - in_prev);
 

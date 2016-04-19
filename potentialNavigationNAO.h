@@ -58,7 +58,11 @@ private:
     ALVideoDeviceProxy cameraProxy;
     ALVideoRecorderProxy recorderProxy;
 
-    double pan, tilt;
+    double pan, tilt_cmd;
+    double camera_tilt, camera_height;
+    Mat cameraOrientation, cameraOrientationT;
+    std::vector<float> cameraFrame;
+
     bool headset, firstKeyIgnored;
     string cameraName;
     Mat OCVimage;
@@ -80,8 +84,9 @@ private:
 
     ofstream cycle_f, cameraRate_f;
 
-    double v;
-    double w;
+    double v, vmax;
+    double w, wmax;
+    double x_f;
 
     void updateTcAndLowPass();
     void updateTilt(int);

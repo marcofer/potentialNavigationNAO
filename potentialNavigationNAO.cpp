@@ -23,10 +23,9 @@
 
 #define MINPITCH -0.671951
 #define MAXPITCH 0.515047
-#define LINEAR_VEL_MAX 0.0476 //(half max vel)
-#define ANGULAR_VEL_MAX 0.42 //0.83
 
-#define SAVE_VIDEO true
+#define SAVE_VIDEO false
+#define FRAME_ROBOT 2
 
 
 potentialNavigationNAO::potentialNavigationNAO(
@@ -76,12 +75,15 @@ void potentialNavigationNAO::init(){
 
     // Head pan-tilt variables
     pan = 0.0;
-    tilt = 0.0;
+    tilt_cmd = 0.0;
     headset = false;
 
     // of_driving object
     drive.set_imgSize(imgSize.width,imgSize.height);
     drive.initFlows(SAVE_VIDEO);
+
+    vmax = drive.get_linVelMax();
+    wmax = drive.get_angVelMax();
 
     full_path = "/home/ubu1204/Documents/Software/qi_work_tree/potentialNavigationNAO/plot";
 
@@ -128,9 +130,9 @@ void potentialNavigationNAO::cleanAllActivities(){
 
     cameraProxy.unsubscribe(cameraName);
 
-    if(SAVE_VIDEO && headset){
+    /*if(SAVE_VIDEO && headset){
         recorderProxy.stopRecording();
-    }
+    }//*/
 
     motionProxy.stopMove();
     qi::os::sleep(2);
@@ -150,10 +152,10 @@ void potentialNavigationNAO::setTiltHead(char key){
     int dtilt = 0;
     int res;
 
-
     // Capture image from subscribed camera
     ALimg = cameraProxy.getImageRemote(cameraName);
     printTiltInfo();
+    string cameraFrameName;
 
     switch(key){
     case('u'):
@@ -166,9 +168,19 @@ void potentialNavigationNAO::setTiltHead(char key){
         headset = true;
         cv::destroyAllWindows();
         drive.createWindowAndTracks();
-        if(SAVE_VIDEO){
-            enableRecording();
-        }
+
+        //Get camera parameters
+        cameraFrameName = (camera_flag) ? ("CameraTop") : ("CameraBottom");
+        cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
+        cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
+                                                  cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
+                                                  cameraFrame.at(8), cameraFrame.at(9), cameraFrame.at(10));
+        camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
+        camera_tilt = M_PI/2.0 - camera_tilt;
+        camera_height = cameraFrame.at(11);
+        transpose(cameraOrientation,cameraOrientationT);
+
+        cout << "camera_tilt: " << camera_tilt << endl;
         break;
     default:
         dtilt = 0;
@@ -177,7 +189,7 @@ void potentialNavigationNAO::setTiltHead(char key){
     updateTilt(dtilt);
 
     AL::ALValue names = AL::ALValue::array(PAN_JOINT,TILT_JOINT);
-    AL::ALValue angles = AL::ALValue::array(pan,tilt);
+    AL::ALValue angles = AL::ALValue::array(pan,tilt_cmd);
     double fracSpeed = 0.2;
 
     motionProxy.setAngles(names,angles,fracSpeed);
@@ -196,15 +208,17 @@ void potentialNavigationNAO::enableRecording(){
 
 void potentialNavigationNAO::updateTilt(int dtilt){
     double delta = 0.1;
-    tilt += (double)dtilt*delta;
+    tilt_cmd += (double)dtilt*delta;
 
-    tilt = (tilt < MAXPITCH) ? ((tilt > MINPITCH) ? (tilt) : (MINPITCH)) : (MAXPITCH) ;
+    tilt_cmd = (tilt_cmd < MAXPITCH) ? ((tilt_cmd > MINPITCH) ? (tilt_cmd) : (MINPITCH)) : (MAXPITCH) ;
 }
 
 void potentialNavigationNAO::run(){
 
     char key;
     double camera_rate;
+
+
     cout << "Running ... " << endl;
     curtime = getTickCount();
 
@@ -214,7 +228,7 @@ void potentialNavigationNAO::run(){
 
     // Command variables
     manual = false;
-    cout << "MANUAL CONTROL" << endl ;
+    cout << "AUTONOMOUS CONTROL" << endl ;
 
 
     while(true){
@@ -241,14 +255,14 @@ void potentialNavigationNAO::run(){
 
                 camera_rate = 1.0/( current_imageTime - previous_imageTime);
 
-                cout << std::fixed << "\n[LABROB] camera frame rate:  " << camera_rate << " Hz" << endl;
+                //cout << std::fixed << "\n[LABROB] camera frame rate:  " << camera_rate << " Hz" << endl;
                 /*cout << std::fixed << "[LABROB] current_imageTime:  " << current_imageTime << endl;
                 cout << std::fixed << "[LABROB] previous_imageTime:  " << previous_imageTime << endl;//*/
 
                 previous_imageTime = current_imageTime;
 
 
-                if(camera_rate!=INFINITY){
+                //if(camera_rate!=INFINITY){
                     double tic = getTickCount();
                     cameraRate_f << camera_rate << ";" << endl;
 
@@ -268,13 +282,13 @@ void potentialNavigationNAO::run(){
                     }
 
 
-
                     getVelocityCommands();
 
+                    //Get the Transform from ROBOT_FRAME to the Camera
 
                     //command NAO
                     if((move_robot) || (manual)){
-                        motionProxy.move(v,0.0f,-w);
+                        motionProxy.move(v,0.0f,w);
                     }
                     else{
                         motionProxy.stopMove();
@@ -282,7 +296,7 @@ void potentialNavigationNAO::run(){
                     double toc = getTickCount();
                     double tictoc = (toc - tic)/getTickFrequency();
                     //cout << "tictoc: " << tictoc << endl;
-                }//*/
+                //}//*/
             }
         }
 
@@ -322,21 +336,37 @@ void potentialNavigationNAO::getVelocityCommands(){
         if(res != -1){
             if(jse->type & JS_EVENT_AXIS){
                 if((int)jse->number == LEFT_UD_AXIS){//tilt down
-                    v = -(jse->value)*LINEAR_VEL_MAX/(double)JOY_MAXVAL;
+                    v = -(jse->value)*vmax/(double)JOY_MAXVAL;
                     cout << "v: " << v << endl;
                 }
                 else if((int)jse->number == RIGHT_LR_AXIS){//tilt up
-                    w = (jse->value)*ANGULAR_VEL_MAX/(double)JOY_MAXVAL;
+                    w = (jse->value)*wmax/(double)JOY_MAXVAL;
                     cout << "w: " << w << endl;
                 }
             }
         }
     }
     else{
-        v = drive.get_linearVel();
-        double norm_w = drive.get_angularVel();
-        w = norm_w*ANGULAR_VEL_MAX;
+        v = drive.get_linearVel(); //FRAME_ROBOT
+        w = -drive.get_angularVel(); //FRAME_ROBOT
     }
+
+    /*double theta = drive.get_theta();
+    theta = M_PI - theta;
+    double u_f = imgSize.height/2.0*tan(theta);
+
+    //Convert velocities in CAMERA_FRAME
+    Mat v_fR = (Mat_<double>(3,1) << v, 0, 0);
+    Mat w_fR = (Mat_<double>(3,1) << 0, 0, w);
+    Mat vc = cameraOrientationT*v_fR;
+    Mat wc = cameraOrientationT*w_fR;//*/
+
+    /*cout << "v_fR: " << v_fR << endl;
+    cout << "w_fR: " << w_fR << endl;
+    cout << "vc: " << vc << endl;
+    cout << "wc: " << wc << endl << endl;//*/
+
+    //Mat Jmat = (Mat_<double>(1,6) << - cos(camera_tilt)/camera_height, 0, )
 
 
 }
@@ -370,9 +400,9 @@ void potentialNavigationNAO::updateTcAndLowPass(){
 
 
     //drive.setTc(0.04);//25Hz
-    drive.setTc(1.0/15.0);
-    drive.setImgLowPassFrequency(7.0);
-    drive.setBarLowPassFrequency(7.0);
+    drive.setTc(1.0/19.0);
+    drive.setImgLowPassFrequency(1.0);
+    drive.setBarLowPassFrequency(1.0);
 
     //cout << "elapsed_time: " << elapsed_tod << endl;
     /*cout << "image cut-off frequency: " << drive.getImgLowPassFrequency() << endl;
@@ -396,7 +426,7 @@ void potentialNavigationNAO::printTiltInfo(){
 
     text_str = "";
     convert.str(""); convert.clear();
-    convert << setprecision(4) << tilt;
+    convert << setprecision(4) << tilt_cmd;
     text_str = convert.str();
     value_size = getTextSize(text_str,1,font_scale,1,0);
     putText(infoImg, text_str,Point(t_size.width + 10,infoImg.rows - 10 - t_size.height),1,font_scale,Scalar(255,255,255),1,CV_AA);
@@ -434,7 +464,6 @@ void potentialNavigationNAO::openFiles(){
     cycle_f.open(cycle_path.c_str(),ios::app);
     cameraRate_f.open(camera_path.c_str(),ios::app);
 
-    cout << "teeeeeeeest" << endl;
     drive.openFiles(full_path);
 }
 
