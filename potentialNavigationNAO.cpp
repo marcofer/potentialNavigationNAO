@@ -33,11 +33,73 @@ potentialNavigationNAO::potentialNavigationNAO(
       : AL::ALModule(broker, name)
       , motionProxy(AL::ALMotionProxy(broker))
       , cameraProxy(AL::ALVideoDeviceProxy(broker))
+
 {
   // Describe the module here. This will appear on the webpage
   setModuleDescription("Potential Navigation Module.");
+
+  functionName("getVideoPath", getName(), "Store the input video path for offline processing.");
+  addParam("video_path", "The input video path.");
+  BIND_METHOD(potentialNavigationNAO::getVideoPath);
+
+  functionName("setCaptureMode", getName(), "Set proper structures according to the capture mode (online/offline).");
+  addParam("online", "Boolean variable stating capture mode");
+  BIND_METHOD(potentialNavigationNAO::setCaptureMode);
+
+  functionName("run", getName(), "Run the main loop.");
+  BIND_METHOD(potentialNavigationNAO::run);
+
 }
 
+void potentialNavigationNAO::getVideoPath(const string &vp){
+    video_path = vp;
+
+    cout << "Video path correctly acquired: " << video_path << endl;
+}
+
+void potentialNavigationNAO::setCaptureMode(const bool& onoff){
+    online = onoff;
+    cout << "Is the algorithm running online? " << ((online) ? ("YES") : ("NO")) << endl;
+
+    if(online){
+        // Choose NAO camera
+        camera_flag = 1 ;//1: top - 0: bottom
+        chooseCamera(camera_flag);
+
+        // Call getImageRemote just once before the main loop to obtain NAOimage characteristics
+        ALimg = cameraProxy.getImageRemote(cameraName);
+        /// compute camera framerate
+        current_imageTime = (int)ALimg[4]          // second
+                            + (int)ALimg[5] * 1e-6;  // usec to seconds
+        previous_imageTime = current_imageTime;
+        imgSize = Size((int)ALimg[0],(int)ALimg[1]);
+
+        OCVimage.create(imgSize.height,imgSize.width,CV_8UC1);
+        OCVimage.data = (uchar*)ALimg[6].GetBinary();
+    }
+    else{
+
+        vc.open(video_path);
+
+        if(!vc.isOpened()){
+            cout << "ERROR:Input video not found." << endl;
+            std::exit(1);
+        }
+        vc >> OCVimage;
+        resize(OCVimage,OCVimage,cv::Size(320,240));
+        cvtColor(OCVimage,OCVimage,CV_BGR2GRAY);
+        imgSize = Size(OCVimage.size());
+    }
+
+    img = Mat::zeros(imgSize,CV_8UC1);
+    prev_img = Mat::zeros(imgSize,CV_8UC1);
+
+    // of_driving object
+    drive.set_imgSize(imgSize.width,imgSize.height);
+    drive.initFlows(SAVE_VIDEO);
+
+
+}
 
 potentialNavigationNAO::~potentialNavigationNAO(){
     cout << "Destroyer called. " << endl ;
@@ -47,26 +109,6 @@ potentialNavigationNAO::~potentialNavigationNAO(){
 void potentialNavigationNAO::init(){
 
     cout << "[potentialNavigationNAO] Initializing ... " << endl;
-    cout << cv::getBuildInformation() << endl ;
-    online = true;
-
-    // Choose NAO camera
-    camera_flag = 1 ;//1: top - 0: bottom
-    chooseCamera(camera_flag);
-
-    // Call getImageRemote just once before the main loop to obtain NAOimage characteristics
-    ALimg = cameraProxy.getImageRemote(cameraName);
-    /// compute camera framerate
-    current_imageTime = (int)ALimg[4]          // second
-                        + (int)ALimg[5] * 1e-6;  // usec to seconds
-    previous_imageTime = current_imageTime;
-
-
-    imgSize = Size((int)ALimg[0],(int)ALimg[1]);
-    OCVimage.create(imgSize.height,imgSize.width,CV_8UC1);
-    OCVimage.data = (uchar*)ALimg[6].GetBinary();
-    img = Mat::zeros(imgSize,CV_8UC1);
-    prev_img = Mat::zeros(imgSize,CV_8UC1);
 
     // Joystick variables
     joy = new cJoystick;
@@ -77,10 +119,7 @@ void potentialNavigationNAO::init(){
     pan = 0.0;
     tilt_cmd = 0.0;
     headset = false;
-
-    // of_driving object
-    drive.set_imgSize(imgSize.width,imgSize.height);
-    drive.initFlows(SAVE_VIDEO);
+    frame_counter = 0;
 
     vmax = drive.get_linVelMax();
     wmax = drive.get_angVelMax();
@@ -97,9 +136,9 @@ void potentialNavigationNAO::init(){
     gettimeofday(&start_tod,NULL);
     elapsed_tod = 0.0;
 
-    run();
+    //run();
 
-    return;
+    //return;
 
 }
 
@@ -128,7 +167,8 @@ void potentialNavigationNAO::cleanAllActivities(){
 
     closeFiles();
 
-    cameraProxy.unsubscribe(cameraName);
+    if(online)
+        cameraProxy.unsubscribe(cameraName);
 
     /*if(SAVE_VIDEO && headset){
         recorderProxy.stopRecording();
@@ -142,6 +182,9 @@ void potentialNavigationNAO::cleanAllActivities(){
 
 
     cv::destroyAllWindows();
+
+    vc.release();
+
     cout << "all active works have been stopped. " << endl ;
 
 }
@@ -170,7 +213,7 @@ void potentialNavigationNAO::setTiltHead(char key){
         drive.createWindowAndTracks();
 
         //Get camera parameters
-        cameraFrameName = (camera_flag) ? ("CameraTop") : ("CameraBottom");
+        /*cameraFrameName = (camera_flag) ? ("CameraTop") : ("CameraBottom");
         cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
         cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
                                                   cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
@@ -180,7 +223,7 @@ void potentialNavigationNAO::setTiltHead(char key){
         camera_height = cameraFrame.at(11);
         transpose(cameraOrientation,cameraOrientationT);
 
-        cout << "camera_tilt: " << camera_tilt << endl;
+        cout << "camera_tilt: " << camera_tilt << endl;//*/
         break;
     default:
         dtilt = 0;
@@ -196,15 +239,15 @@ void potentialNavigationNAO::setTiltHead(char key){
 }
 
 
-void potentialNavigationNAO::enableRecording(){
+/*void potentialNavigationNAO::enableRecording(){
     string folder_path = "/home/nao/recordings/cameras/NAO_potentialNavigation/video";
 
     recorderProxy.setColorSpace(11);//AL::kRGBColorSpace : buffer contains triplet on the format 0xBBGGRR, equivalent to three unsigned char
     recorderProxy.setResolution(1);//kQVGA
     recorderProxy.setVideoFormat("MJPG");
     recorderProxy.setFrameRate(30);
-    recorderProxy.startRecording(folder_path,"NAOvideo",true);//*/
-}
+    recorderProxy.startRecording(folder_path,"NAOvideo",true);
+}//*/
 
 void potentialNavigationNAO::updateTilt(int dtilt){
     double delta = 0.1;
@@ -218,7 +261,6 @@ void potentialNavigationNAO::run(){
     char key;
     double camera_rate;
 
-
     cout << "Running ... " << endl;
     curtime = getTickCount();
 
@@ -230,7 +272,6 @@ void potentialNavigationNAO::run(){
     manual = false;
     cout << "AUTONOMOUS CONTROL" << endl ;
 
-
     while(true){
 
         key = cv::waitKey(1);
@@ -240,12 +281,11 @@ void potentialNavigationNAO::run(){
             break;
 
 
-        if(online){
-            if(!headset){
-                setTiltHead(key);
-            }
-            else{
-
+        if(online && !headset){
+            setTiltHead(key);
+        }
+        else{
+            if(online){
                 // capture image from subscribed camera
                 ALimg = cameraProxy.getImageRemote(cameraName);
 
@@ -260,46 +300,55 @@ void potentialNavigationNAO::run(){
                 cout << std::fixed << "[LABROB] previous_imageTime:  " << previous_imageTime << endl;//*/
 
                 previous_imageTime = current_imageTime;
-
-
-                //if(camera_rate!=INFINITY){
-                    double tic = getTickCount();
-                    cameraRate_f << camera_rate << ";" << endl;
-
-                    // update working images
-                    img.copyTo(prev_img);
-                    OCVimage.copyTo(img);
-
-                    //make the algorithm run
-                    updateTcAndLowPass();
-
-                    try{
-                        drive.run(img,prev_img,SAVE_VIDEO);
-                    }
-                    catch(...){
-                        cerr << "Problem in drive.run. " << endl;
-                        std::exit(1);
-                    }
-
-
-                    getVelocityCommands();
-
-                    //Get the Transform from ROBOT_FRAME to the Camera
-
-                    //command NAO
-                    if((move_robot) || (manual)){
-                        motionProxy.move(v,0.0f,w);
-                    }
-                    else{
-                        motionProxy.stopMove();
-                    }
-                    double toc = getTickCount();
-                    double tictoc = (toc - tic)/getTickFrequency();
-                    //cout << "tictoc: " << tictoc << endl;
-                //}//*/
+                cameraRate_f << camera_rate << ";" << endl;
             }
-        }
+            else{
+                vc >> OCVimage;
+                resize(OCVimage,OCVimage,cv::Size(320,240));
+                cvtColor(OCVimage,OCVimage,CV_BGR2GRAY);
+                frame_counter ++;
 
+                if (frame_counter == vc.get(CV_CAP_PROP_FRAME_COUNT)){
+                  frame_counter = 0;
+                  vc.set(CV_CAP_PROP_POS_FRAMES,0);
+                }
+
+            }
+
+            double tic = getTickCount();
+
+            // update working images
+            img.copyTo(prev_img);
+            OCVimage.copyTo(img);
+
+            //make the algorithm run
+            updateTcAndLowPass();
+
+            try{
+                drive.run(img,prev_img,SAVE_VIDEO);
+            }
+            catch(...){
+                cerr << "Problem in drive.run. " << endl;
+                std::exit(1);
+            }
+
+
+            getVelocityCommands();
+
+            //Get the Transform from ROBOT_FRAME to the Camera
+
+            //command NAO
+            if((move_robot) || (manual)){
+                motionProxy.move(v,0.0f,w);
+            }
+            else{
+                motionProxy.stopMove();
+            }
+            double toc = getTickCount();
+            double tictoc = (toc - tic)/getTickFrequency();
+            //cout << "tictoc: " << tictoc << endl;
+        //}//*/
+        }
     }
 
     cleanAllActivities();
@@ -350,25 +399,6 @@ void potentialNavigationNAO::getVelocityCommands(){
         v = drive.get_linearVel(); //FRAME_ROBOT
         w = -drive.get_angularVel(); //FRAME_ROBOT
     }
-
-    /*double theta = drive.get_theta();
-    theta = M_PI - theta;
-    double u_f = imgSize.height/2.0*tan(theta);
-
-    //Convert velocities in CAMERA_FRAME
-    Mat v_fR = (Mat_<double>(3,1) << v, 0, 0);
-    Mat w_fR = (Mat_<double>(3,1) << 0, 0, w);
-    Mat vc = cameraOrientationT*v_fR;
-    Mat wc = cameraOrientationT*w_fR;//*/
-
-    /*cout << "v_fR: " << v_fR << endl;
-    cout << "w_fR: " << w_fR << endl;
-    cout << "vc: " << vc << endl;
-    cout << "wc: " << wc << endl << endl;//*/
-
-    //Mat Jmat = (Mat_<double>(1,6) << - cos(camera_tilt)/camera_height, 0, )
-
-
 }
 
 void potentialNavigationNAO::updateTcAndLowPass(){
@@ -378,9 +408,6 @@ void potentialNavigationNAO::updateTcAndLowPass(){
           - (start_tod.tv_sec + (double)start_tod.tv_usec/1000000.0);
 
     start_tod = end_tod;
-    double fc_ratio = 0.25;
-    double cutoff_f = 1.0/elapsed_tod*fc_ratio;
-    double freq = 1.0/elapsed_tod;
 
     double loop_time;
     double now = getTickCount();

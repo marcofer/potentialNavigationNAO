@@ -10,6 +10,7 @@
 
 // Aldebaran includes
 #include <alcommon/almodule.h>
+#include <alcommon/albroker.h>
 #include <alproxies/almotionproxy.h>
 #include <alproxies/alvideodeviceproxy.h>
 #include <alproxies/alvideorecorderproxy.h>
@@ -56,7 +57,11 @@ private:
     // Aldebaran built-in modules
     ALMotionProxy motionProxy;
     ALVideoDeviceProxy cameraProxy;
-    ALVideoRecorderProxy recorderProxy;
+    //ALVideoRecorderProxy recorderProxy;
+
+    //Opencv Structures
+    cv::VideoCapture vc;
+    int frame_counter;
 
     double pan, tilt_cmd;
     double camera_tilt, camera_height;
@@ -110,6 +115,10 @@ public:
 
     virtual ~potentialNavigationNAO();
     virtual void init();
+
+    void getVideoPath(const std::string& vp);
+    void setCaptureMode(const bool &on);
+
 
     void setTiltHead(char);
     void chooseCamera(int);

@@ -22,5 +22,7 @@ set(_srcs
 
 # Create a executable named potentialNavigationNAO
 # with the source file: main.cpp
-qi_create_bin(potentialNavigationNAO ${_srcs})
-qi_use_lib(potentialNavigationNAO  ALCOMMON OPENCV2_CORE OPENCV2_HIGHGUI OPENCV2_IMGPROC OPENCV2_GPU OPENCV2_VIDEO)
+qi_create_bin(NAO-VPN-Module_create ${_srcs})
+qi_use_lib(NAO-VPN-Module_create  ALCOMMON OPENCV2_CORE OPENCV2_HIGHGUI OPENCV2_IMGPROC OPENCV2_GPU OPENCV2_VIDEO)
+
+
