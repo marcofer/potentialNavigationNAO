@@ -35,19 +35,25 @@ potentialNavigationNAO::potentialNavigationNAO(
       , cameraProxy(AL::ALVideoDeviceProxy(broker))
 
 {
-  // Describe the module here. This will appear on the webpage
-  setModuleDescription("Potential Navigation Module.");
+    // If the running NAOqi instance is not local, instantiate the VideoRecorder Proxy to record video from camera
+    if(broker->getParentIP() != "127.0.0.1" && SAVE_VIDEO){
+        recorderProxy = static_cast<AL::ALVideoRecorderProxy*>(recorderProxy);
+        recorderProxy = new AL::ALVideoRecorderProxy(broker);
+    }
 
-  functionName("getVideoPath", getName(), "Store the input video path for offline processing.");
-  addParam("video_path", "The input video path.");
-  BIND_METHOD(potentialNavigationNAO::getVideoPath);
+    // Describe the module here. This will appear on the webpage
+    setModuleDescription("Potential Navigation Module.");
 
-  functionName("setCaptureMode", getName(), "Set proper structures according to the capture mode (online/offline).");
-  addParam("online", "Boolean variable stating capture mode");
-  BIND_METHOD(potentialNavigationNAO::setCaptureMode);
+    functionName("getVideoPath", getName(), "Store the input video path for offline processing.");
+    addParam("video_path", "The input video path.");
+    BIND_METHOD(potentialNavigationNAO::getVideoPath);
 
-  functionName("run", getName(), "Run the main loop.");
-  BIND_METHOD(potentialNavigationNAO::run);
+    functionName("setCaptureMode", getName(), "Set proper structures according to the capture mode (online/offline).");
+    addParam("online", "Boolean variable stating capture mode");
+    BIND_METHOD(potentialNavigationNAO::setCaptureMode);
+
+    functionName("run", getName(), "Run the main loop.");
+    BIND_METHOD(potentialNavigationNAO::run);
 
 }
 
@@ -135,11 +141,6 @@ void potentialNavigationNAO::init(){
     }
     gettimeofday(&start_tod,NULL);
     elapsed_tod = 0.0;
-
-    //run();
-
-    //return;
-
 }
 
 
@@ -153,8 +154,6 @@ void potentialNavigationNAO::chooseCamera(int camera_flag){
 
     cameraName = (camera_flag) ? ("bottom") : ("top");
     cameraName = cameraProxy.subscribeCamera(cameraName, camera_flag,  AL::kQVGA, AL::kYuvColorSpace, 30);
-    //cameraName = cameraProxy.subscribe(cameraName, kQVGA, kBGRColorSpace, 30);
-    //cameraProxy.setActiveCamera(cameraName,camera_flag);
     cout << "Camera chosen: " << cameraName << endl;
     cout << "Frame rate: " << cameraProxy.getFrameRate(cameraName) << endl;
 }
@@ -170,8 +169,10 @@ void potentialNavigationNAO::cleanAllActivities(){
     if(online)
         cameraProxy.unsubscribe(cameraName);
 
-    /*if(SAVE_VIDEO && headset){
-        recorderProxy.stopRecording();
+    if(SAVE_VIDEO && headset){
+        AL::ALVideoRecorderProxy* recProxy = (AL::ALVideoRecorderProxy*)recorderProxy;
+        recProxy->stopRecording();
+        delete (AL::ALVideoRecorderProxy*)recorderProxy;
     }//*/
 
     motionProxy.stopMove();
@@ -212,6 +213,10 @@ void potentialNavigationNAO::setTiltHead(char key){
         cv::destroyAllWindows();
         drive.createWindowAndTracks();
 
+        if(SAVE_VIDEO){
+            enableRecording();
+        }
+
         //Get camera parameters
         /*cameraFrameName = (camera_flag) ? ("CameraTop") : ("CameraBottom");
         cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
@@ -239,14 +244,15 @@ void potentialNavigationNAO::setTiltHead(char key){
 }
 
 
-/*void potentialNavigationNAO::enableRecording(){
+void potentialNavigationNAO::enableRecording(){
     string folder_path = "/home/nao/recordings/cameras/NAO_potentialNavigation/video";
+    AL::ALVideoRecorderProxy* recProxy = (AL::ALVideoRecorderProxy*)recorderProxy;
 
-    recorderProxy.setColorSpace(11);//AL::kRGBColorSpace : buffer contains triplet on the format 0xBBGGRR, equivalent to three unsigned char
-    recorderProxy.setResolution(1);//kQVGA
-    recorderProxy.setVideoFormat("MJPG");
-    recorderProxy.setFrameRate(30);
-    recorderProxy.startRecording(folder_path,"NAOvideo",true);
+    recProxy->setColorSpace(11);//AL::kRGBColorSpace : buffer contains triplet on the format 0xBBGGRR, equivalent to three unsigned char
+    recProxy->setResolution(1);//kQVGA
+    recProxy->setVideoFormat("MJPG");
+    recProxy->setFrameRate(30);
+    recProxy->startRecording(folder_path,"NAOvideo",true);
 }//*/
 
 void potentialNavigationNAO::updateTilt(int dtilt){

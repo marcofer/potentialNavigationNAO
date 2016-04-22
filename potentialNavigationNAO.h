@@ -57,7 +57,7 @@ private:
     // Aldebaran built-in modules
     ALMotionProxy motionProxy;
     ALVideoDeviceProxy cameraProxy;
-    //ALVideoRecorderProxy recorderProxy;
+    void* recorderProxy;
 
     //Opencv Structures
     cv::VideoCapture vc;
