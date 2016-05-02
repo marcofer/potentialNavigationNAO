@@ -69,7 +69,7 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
 
     if(online){
         // Choose NAO camera
-        camera_flag = 1 ;//1: top - 0: bottom
+        camera_flag = 1 ;//1: bottom - 0: top
         chooseCamera(camera_flag);
 
         // Call getImageRemote just once before the main loop to obtain NAOimage characteristics
@@ -124,6 +124,7 @@ void potentialNavigationNAO::init(){
     // Head pan-tilt variables
     pan = 0.0;
     tilt_cmd = 0.0;
+
     headset = false;
     frame_counter = 0;
 
@@ -195,11 +196,11 @@ void potentialNavigationNAO::setTiltHead(char key){
 
     int dtilt = 0;
     int res;
+    string cameraFrameName;
 
     // Capture image from subscribed camera
     ALimg = cameraProxy.getImageRemote(cameraName);
     printTiltInfo();
-    string cameraFrameName;
 
     switch(key){
     case('u'):
@@ -218,7 +219,8 @@ void potentialNavigationNAO::setTiltHead(char key){
         }
 
         //Get camera parameters
-        /*cameraFrameName = (camera_flag) ? ("CameraTop") : ("CameraBottom");
+        // FOR ANTONIO'S CONTROL LAW
+        /*cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
         cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
         cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
                                                   cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
@@ -228,7 +230,16 @@ void potentialNavigationNAO::setTiltHead(char key){
         camera_height = cameraFrame.at(11);
         transpose(cameraOrientation,cameraOrientationT);
 
-        cout << "camera_tilt: " << camera_tilt << endl;//*/
+        cout << "camera_tilt: " << camera_tilt << endl;
+        drive.set_tilt(camera_tilt);
+        drive.set_cameraHeight(camera_height);
+
+        cout << "cameraOrientation: \n" << cameraOrientation << endl;
+
+
+        drive.set_cameraRotation(cameraOrientation);//*/
+
+
         break;
     default:
         dtilt = 0;
@@ -278,6 +289,10 @@ void potentialNavigationNAO::run(){
     manual = false;
     cout << "AUTONOMOUS CONTROL" << endl ;
 
+    if(!online){
+        drive.createWindowAndTracks();
+    }
+
     while(true){
 
         key = cv::waitKey(1);
@@ -309,15 +324,17 @@ void potentialNavigationNAO::run(){
                 cameraRate_f << camera_rate << ";" << endl;
             }
             else{
+
+                frame_counter += 1;
+
+                if (frame_counter == vc.get(CV_CAP_PROP_FRAME_COUNT)){
+                  frame_counter = 1;
+                  vc.set(CV_CAP_PROP_POS_FRAMES,0);
+                }
+
                 vc >> OCVimage;
                 resize(OCVimage,OCVimage,cv::Size(320,240));
                 cvtColor(OCVimage,OCVimage,CV_BGR2GRAY);
-                frame_counter ++;
-
-                if (frame_counter == vc.get(CV_CAP_PROP_FRAME_COUNT)){
-                  frame_counter = 0;
-                  vc.set(CV_CAP_PROP_POS_FRAMES,0);
-                }
 
             }
 
@@ -437,7 +454,8 @@ void potentialNavigationNAO::updateTcAndLowPass(){
     drive.setImgLowPassFrequency(1.0);
     drive.setBarLowPassFrequency(1.0);
 
-    //cout << "elapsed_time: " << elapsed_tod << endl;
+    /*cout << "elapsed_time: " << elapsed_tod << endl;
+    cout << "freq: " << 1.0/elapsed_tod << endl << endl;
     /*cout << "image cut-off frequency: " << drive.getImgLowPassFrequency() << endl;
     cout << "control cut-off frequency: " << drive.getBarLowPassFrequency() << endl << endl;//*/
 
