@@ -101,12 +101,22 @@ void of_driving::initFlows(bool save_video){
     noFilt_vf = Mat::zeros(img_height,img_width,CV_32FC2);
     noFilt_rf = Mat::zeros(img_height,img_width,CV_32FC2);
 
+
     point_counter = 0;
 	best_counter = 0;
     nf_point_counter = 0;
     nf_best_counter = 0;
 
 	area_ths = 50;
+
+
+    /*focal_length = 236;
+    principal_point = cv::Point2f(img_width/2,img_height/2);
+    K << focal_length, 0, principal_point.x,
+         0, focal_length, principal_point.y,
+         0,   0,   1;
+
+    Kinv = K.inverse();//*/
 
     /*double ROI_width = img_width/2.0;
     double ROI_height = img_height/2.0;
@@ -937,7 +947,46 @@ void of_driving::computeRobotVelocities(){
 	double R = Rm*sin(theta);
 	angular_vel = R ;
 
-    angularVel_f << angular_vel << "; " << endl;
+    /*double xf;
+    double lambda = 1;
+
+    //cout << "uf: " << p_bar << endl;
+
+    xf = (p_bar(0))/focal_length; //I put the '+' because p_bar is a free vector, so I need to sum it up with the principal point to get the ... no wait, maybe the principal point should
+                                                      //not be put at all
+
+    //cout << "xf: " << xf << endl;
+
+    cout << "camera_tilt: " << camera_tilt << endl;
+    cout << "camera_height: " << camera_height << endl;
+    cout << "xf: " << xf << endl;
+    Lx << - cos(camera_tilt)/camera_height, 0, xf*cos(camera_tilt)/camera_height, 0, -(1 + xf*xf), 0 ;
+
+    Eigen::Matrix<double,3,1> v,w;
+    Eigen::Matrix<double,6,6> W;
+    W.topLeftCorner(3,3) = cameraR;
+    W.bottomRightCorner(3,3) = cameraR;
+    v << linear_vel, 0, 0;
+
+    Lx = Lx*W;
+
+    Eigen::Matrix<double,1,1> b;
+    Eigen::Matrix<double,1,1> proportionalAct;
+
+    proportionalAct << lambda*xf;
+
+    Eigen::Matrix<double,1,3> Jv = Lx.block<1,3>(0,0);
+    Eigen::Matrix<double,1,3> Jw = Lx.block<1,3>(0,3);
+
+    b = Jv*v;
+    b += proportionalAct;
+    w = (-Jw).householderQr().solve(b);
+
+    cout << "w: \n" << w << endl;
+
+
+
+    angularVel_f << angular_vel << "; " << endl;//*/
     //cout << "w: " << angular_vel << endl;
 	//R = low_pass_filter(R,Rold,Tc,1.0/ctrl_lowpass_freq);
 	//Rold = R;
@@ -972,6 +1021,24 @@ void of_driving::computeFlowDirection(){
 
     imshow("atanMat",atanMat);
 }
+
+
+/*void of_driving::set_cameraRotation(Mat R ){
+
+    cameraR(0,0) = R.at<double>(0);
+    cameraR(0,1) = R.at<double>(1);
+    cameraR(0,2) = R.at<double>(2);
+    cameraR(1,0) = R.at<double>(3);
+    cameraR(1,1) = R.at<double>(4);
+    cameraR(1,2) = R.at<double>(5);
+    cameraR(2,0) = R.at<double>(6);
+    cameraR(2,1) = R.at<double>(7);
+    cameraR(2,2) = R.at<double>(8);
+
+    cout << "cameraR: \n" << cameraR << endl;
+
+}//*/
+
 
 /*** SINGLE-THREADED DISPLAY FUNCTION ***/
 Mat of_driving::displayImages(Mat& img){

@@ -19,6 +19,12 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include "opencv2/nonfree/nonfree.hpp"
 
+//Eigen includes
+/*#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Householder>
+#include <eigen3/Eigen/LU>
+#include <eigen3/Eigen/QR>//*/
+
 
 #include <boost/math/tools/config.hpp>
 
@@ -51,7 +57,9 @@ public:
     inline double getImgLowPassFrequency(){return img_lowpass_freq;}
     inline double getBarLowPassFrequency(){return bar_lowpass_freq;}
 
-	inline void set_tilt(double tilt) {camera_tilt = tilt;}
+    /*inline void set_tilt(double tilt) {camera_tilt = tilt;}
+    inline void set_cameraHeight(double h) {camera_height = h;}
+    void set_cameraRotation(cv::Mat);//*/
 
 	//run function - Real time image processing algorithm
     void run(Mat& img, Mat& prev_img, bool);
@@ -70,6 +78,7 @@ public:
     inline double get_angVelMax() {return Rm;}
     inline double get_throttle() {return ankle_angle;}
     inline double get_theta() {return theta;}
+    inline Matx21f get_NavVec() {return p_bar;}
 
     void createWindowAndTracks();
 	//the control variable: steering velocity (or angular velocity?)
@@ -84,10 +93,17 @@ public:
 
 private:
 
+    //Camera calibration matrix
+    /*double focal_length;
+    double camera_height;
+
+    cv::Point2f principal_point;
+    Eigen::Matrix3d K, Kinv, cameraR;
+    Eigen::Matrix<double,1,6> Lx;//*/
 
 	int area_ths;
 
-	bool open_close;
+    bool open_close;
 
 	Mat H;
 
