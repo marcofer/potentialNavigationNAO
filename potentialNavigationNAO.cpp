@@ -97,8 +97,11 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
         imgSize = Size(OCVimage.size());
     }
 
-    img = Mat::zeros(imgSize,CV_8UC1);
-    prev_img = Mat::zeros(imgSize,CV_8UC1);
+    //img = Mat::zeros(imgSize,CV_8UC1);
+    //prev_img = Mat::zeros(imgSize,CV_8UC1);
+    OCVimage.copyTo(img);
+    OCVimage.copyTo(prev_img);
+
 
     // of_driving object
     drive.set_imgSize(imgSize.width,imgSize.height);
@@ -372,6 +375,7 @@ void potentialNavigationNAO::run(){
             //cout << "tictoc: " << tictoc << endl;
         //}//*/
         }
+
     }
 
     cleanAllActivities();
