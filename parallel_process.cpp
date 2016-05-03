@@ -11,6 +11,7 @@ void ParallelDominantPlaneBuild::operator()(const cv::Range& range) const{
     {
 
         cv::Mat dp_rect(dp,cv::Rect(0,dp.rows/coreNum*k,dp.cols,dp.rows/coreNum));
+        cv::Mat invdp_rect(inv_dp,cv::Rect(0,inv_dp.rows/coreNum*k,inv_dp.cols,inv_dp.rows/coreNum));
         cv::Mat op_rect(op,cv::Rect(0,op.rows/coreNum*k,op.cols,op.rows/coreNum));
         cv::Mat of_rect(of,cv::Rect(0,of.rows/coreNum*k,of.cols,of.rows/coreNum));
         cv::Mat pf_rect(pf,cv::Rect(0,pf.rows/coreNum*k,pf.cols,pf.rows/coreNum));
@@ -91,6 +92,8 @@ void ParallelDominantPlaneBuild::operator()(const cv::Range& range) const{
         double thresh = dp_threshold; //100
         double maxVal = 255;
         threshold(dp_rect,dp_rect,thresh,maxVal,THRESH_BINARY);//*/
+
+        cv::bitwise_not(dp_rect,invdp_rect);
     }//*/
 }   
 

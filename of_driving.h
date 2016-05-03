@@ -103,7 +103,11 @@ private:
 
 	int area_ths;
 
-    bool open_close;
+        bool open_close;
+
+        //Centroids variables
+        vector < vector < cv::Point > > contours, good_contours;
+        vector < Vec4i > cannyHierarchy;
 
 	Mat H;
 

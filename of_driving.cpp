@@ -232,8 +232,8 @@ void of_driving::createWindowAndTracks(){
     createTrackbar("C_dilat*10",of_alg_name,&close_dilate_int,200,NULL);
     createTrackbar("C_erode*10",of_alg_name,&close_erode_int,200,NULL);//*/
     createTrackbar("field weights",of_alg_name,&weight_int,10,NULL);//*/
-    //createTrackbar("area_ths",of_alg_name,&area_ths,1000,NULL);
-
+    
+    createTrackbar("area_ths",of_alg_name,&area_ths,500,NULL);
 
 }
 
@@ -710,7 +710,7 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
     nf_point_counter = 0;
 
 	/*** MULTI-THREADED ***/
-    parallel_for_(Range(0,cores_num),ParallelDominantPlaneBuild(cores_num,dominant_plane,old_plane,optical_flow,planar_flow,epsilon,
+    parallel_for_(Range(0,cores_num),ParallelDominantPlaneBuild(cores_num,dominant_plane,inverted_dp,old_plane,optical_flow,planar_flow,epsilon,
                                                                 Tc,img_lowpass_freq,A,b,dp_threshold, noFilt_dp, noFilt_of, noFilt_pf,
                                                                 nf_A, nf_b));
 	
@@ -735,6 +735,39 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 	}
 
 
+        /*** main code of branch 1 on centroids ***/
+        //imshow("inverted plane",inverted_dp);
+        Mat drawing;
+        cvtColor(inverted_dp,drawing,CV_GRAY2BGR);
+        //Find contours
+        contours.clear();
+        good_contours.clear();
+        cv::findContours(inverted_dp,contours,cannyHierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
+        //Get Moments
+        vector < Moments > mu;
+        
+        for (int i = 0 ; i < contours.size() ; i ++){
+            if(contourArea(contours[i]) > area_ths){
+                mu.push_back(moments(contours[i]));
+                good_contours.push_back(contours[i]);
+            }
+        }
+
+        std::cout << "mu.size(): " << mu.size() << std::endl;
+        std::cout << "good_contours.size(): " << good_contours.size() << std::endl;
+        //Get the mass centers
+        vector < Point2f > mc;
+        for (int i = 0 ; i < mu.size() ; i ++){
+            mc.push_back(Point2f(mu[i].m10/mu[i].m00,mu[i].m01/mu[i].m00));
+        }
+
+        //Draw contours' centers
+        for (int i = 0 ; i < mu.size() ; i ++){
+            //drawContours(drawing,good_contours[i],i,Scalar(10,0,0),2,8,cannyHierarchy,0,Point());
+            circle(drawing,mc[i],4,Scalar(0,0,255),-1,8,0);
+        }
+        //imshow("Canny",cannyImg);
+        imshow("Centroids",drawing);//*/
 
 	/*** SINGLE-THREADED PLANAR FLOW CONSTRUCTION ***/
 	

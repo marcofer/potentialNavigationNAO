@@ -20,18 +20,19 @@ class ParallelDominantPlaneBuild : public cv::ParallelLoopBody{
     private:
     	int coreNum;
         cv::Mat& dp;
+        cv::Mat& inv_dp;
         cv::Mat& op;
         cv::Mat of;
         cv::Mat& pf;
-
+        
         double epsilon;
         double Tc;
         double cut_f;
             
     	cv::Matx22f A;
-		cv::Matx21f b;
+        cv::Matx21f b;
 
-		int dp_threshold;
+        int dp_threshold;
 
         cv::Mat& nf_dp;
         cv::Mat nf_of;
@@ -41,10 +42,10 @@ class ParallelDominantPlaneBuild : public cv::ParallelLoopBody{
         cv::Matx21f nf_b;
 
     public:
-        ParallelDominantPlaneBuild(int ncores, cv::Mat& dpImage, cv::Mat& opImage, cv::Mat ofImage, cv::Mat& pfImage, double eps,
+        ParallelDominantPlaneBuild(int ncores, cv::Mat& dpImage, cv::Mat& invDpImage, cv::Mat& opImage, cv::Mat ofImage, cv::Mat& pfImage, double eps,
                                    double sampling_time, double f, cv::Matx22f A_, cv::Matx21f b_, int ths, cv::Mat& nf_dp_,
                                    cv::Mat nf_of_, cv::Mat& nf_pf_, cv::Matx22f nf_A_, cv::Matx21f nf_b_)
-                    : coreNum(ncores), dp(dpImage), op(opImage), of(ofImage), pf(pfImage), epsilon(eps), Tc(sampling_time), cut_f(f),
+                    : coreNum(ncores), dp(dpImage), inv_dp(invDpImage), op(opImage), of(ofImage), pf(pfImage), epsilon(eps), Tc(sampling_time), cut_f(f),
                       A(A_), b(b_), dp_threshold(ths), nf_dp(nf_dp_), nf_of(nf_of_), nf_pf(nf_pf_), nf_A(nf_A_), nf_b(nf_b_){}
 
         virtual void operator()(const cv::Range& range) const;
