@@ -20,7 +20,7 @@
 #include "opencv2/nonfree/nonfree.hpp"
 
 //Eigen includes
-/*#include <eigen3/Eigen/Core>
+#include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/Householder>
 #include <eigen3/Eigen/LU>
 #include <eigen3/Eigen/QR>//*/
@@ -57,7 +57,7 @@ public:
     inline double getImgLowPassFrequency(){return img_lowpass_freq;}
     inline double getBarLowPassFrequency(){return bar_lowpass_freq;}
 
-    /*inline void set_tilt(double tilt) {camera_tilt = tilt;}
+    inline void set_tilt(double tilt) {camera_tilt = tilt;}
     inline void set_cameraHeight(double h) {camera_height = h;}
     void set_cameraRotation(cv::Mat);//*/
 
@@ -94,20 +94,23 @@ public:
 private:
 
     //Camera calibration matrix
-    /*double focal_length;
+    double focal_length;
     double camera_height;
 
     cv::Point2f principal_point;
     Eigen::Matrix3d K, Kinv, cameraR;
-    Eigen::Matrix<double,1,6> Lx;//*/
+    Eigen::Matrix<double,1,6> Lx_l, Lx_r;//*/
 
 	int area_ths;
 
         bool open_close;
 
-        //Centroids variables
-        vector < vector < cv::Point > > contours, good_contours;
-        vector < Vec4i > cannyHierarchy;
+    //Centroids variables
+    vector < vector < cv::Point > > contours, good_contours;
+    vector < Vec4i > cannyHierarchy;
+    vector < Point2f > centroids, l_centroids, r_centroids;
+    Point2f x_r, x_l;
+    Point2f old_xr, old_xl;
 
 	Mat H;
 
@@ -256,7 +259,7 @@ private:
 	//scale factor for optcal flow
 	int of_scale;
 
-    ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f;
+    ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f, error_f;
 
 
     /* Methods */
@@ -265,9 +268,13 @@ private:
 
 	void estimateAffineCoefficients(bool,Mat&,Mat&,Rect&);
 	void buildPlanarFlowAndDominantPlane(Mat&);
-	void computeGradientVectorField();
+
+    void computeCentroids();
+
+    void computeGradientVectorField();
 	void computePotentialField();
 	void computeControlForceOrientation();
+
 
     void computeRobotVelocities();
     void computeFlowDirection();

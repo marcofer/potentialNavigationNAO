@@ -93,7 +93,7 @@ void ParallelDominantPlaneBuild::operator()(const cv::Range& range) const{
         double maxVal = 255;
         threshold(dp_rect,dp_rect,thresh,maxVal,THRESH_BINARY);//*/
 
-        cv::bitwise_not(dp_rect,invdp_rect);
+        //cv::bitwise_not(dp_rect,invdp_rect);
     }//*/
 }   
 
@@ -362,9 +362,14 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             circle(cf_img,Point2f((w1+w2)*0.5),3,Scalar(0,0,255),2);
             circle(cf_img,Point2f((v1+v2)*0.5),3,Scalar(0,0,255),2);
 
+
+            // Navigation Vector visual information
             arrowedLine2(cf_img,center,center + y*50,Scalar(255,0,0),3.0,8,0,0.1);
             arrowedLine2(cf_img,center,center + pb,Scalar(0,255,0),3.0,1,0,0.1);
             arrowedLine2(cf_img,center,center + nfpb,Scalar(0,255,255),3.0,1,0,0.1);
+
+
+
 
             cf_img.copyTo(total(Rect(2*img.cols,img.rows,img.cols,img.rows)));
 

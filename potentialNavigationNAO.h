@@ -95,6 +95,7 @@ private:
 
     void updateTcAndLowPass();
     void updateTilt(int);
+    void updateCameraRotation();
     void enableRecording();
     void cleanAllActivities();
     void printTiltInfo();

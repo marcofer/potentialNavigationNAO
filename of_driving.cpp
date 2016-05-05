@@ -107,10 +107,13 @@ void of_driving::initFlows(bool save_video){
     nf_point_counter = 0;
     nf_best_counter = 0;
 
-	area_ths = 50;
+    area_ths = 400;
+    x_r = Point2f(img_width,img_height/2);
+    x_l = Point2f(0,img_height/2);
+    old_xr = Point2f(img_width,img_height/2);
+    old_xl = Point2f(0,img_height/2);
 
-
-    /*focal_length = 236;
+    //focal_length = 236;
     principal_point = cv::Point2f(img_width/2,img_height/2);
     K << focal_length, 0, principal_point.x,
          0, focal_length, principal_point.y,
@@ -394,8 +397,11 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
     }//*/
 
 
-    /// --- 5. Compute gradient vector field from dominant plane 
+    /// --- 5a. Compute gradient vector field from dominant plane
     computeGradientVectorField();
+
+    /// --- 5b. Compute the obstacle centroids
+    computeCentroids();
 
     /// --- 6. Compute the desired planar flow, from the theta_d <--- NOT REQUIRED HERE
     //computePotentialField();
@@ -411,7 +417,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
 	
 
 	/*** MULTI-THREADED DISPLAY ***/
-    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,dominantHull,result_field,p_bar,angular_vel,total,rect_ransac, theta, linear_vel, Rm, noFilt_pbar));
+    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,result_field,p_bar,angular_vel,total,rect_ransac, theta, linear_vel, Rm, noFilt_pbar));
     if(save_video){
         record_total.write(total);
     }//*/
@@ -734,40 +740,7 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 		dilate(dominant_plane, dominant_plane, getStructuringElement(MORPH_ELLIPSE, Size(open_dilate,open_dilate)));//*/
 	}
 
-
-        /*** main code of branch 1 on centroids ***/
-        //imshow("inverted plane",inverted_dp);
-        Mat drawing;
-        cvtColor(inverted_dp,drawing,CV_GRAY2BGR);
-        //Find contours
-        contours.clear();
-        good_contours.clear();
-        cv::findContours(inverted_dp,contours,cannyHierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
-        //Get Moments
-        vector < Moments > mu;
-        
-        for (int i = 0 ; i < contours.size() ; i ++){
-            if(contourArea(contours[i]) > area_ths){
-                mu.push_back(moments(contours[i]));
-                good_contours.push_back(contours[i]);
-            }
-        }
-
-        std::cout << "mu.size(): " << mu.size() << std::endl;
-        std::cout << "good_contours.size(): " << good_contours.size() << std::endl;
-        //Get the mass centers
-        vector < Point2f > mc;
-        for (int i = 0 ; i < mu.size() ; i ++){
-            mc.push_back(Point2f(mu[i].m10/mu[i].m00,mu[i].m01/mu[i].m00));
-        }
-
-        //Draw contours' centers
-        for (int i = 0 ; i < mu.size() ; i ++){
-            //drawContours(drawing,good_contours[i],i,Scalar(10,0,0),2,8,cannyHierarchy,0,Point());
-            circle(drawing,mc[i],4,Scalar(0,0,255),-1,8,0);
-        }
-        //imshow("Canny",cannyImg);
-        imshow("Centroids",drawing);//*/
+    cv::bitwise_not(dominant_plane,inverted_dp);
 
 	/*** SINGLE-THREADED PLANAR FLOW CONSTRUCTION ***/
 	
@@ -831,6 +804,84 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 
 }
 
+void of_driving::computeCentroids(){
+    /*** main code of branch 1 on centroids ***/
+    //imshow("inverted plane",inverted_dp);
+    Mat drawing;
+    cvtColor(inverted_dp,drawing,CV_GRAY2BGR);
+    contours.clear();
+    good_contours.clear();
+    centroids.clear();
+    l_centroids.clear();
+    r_centroids.clear();
+
+    //Find contours
+    cv::findContours(inverted_dp,contours,cannyHierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
+    //Get Moments
+    vector < Moments > mu;
+
+    for (int i = 0 ; i < contours.size() ; i ++){
+        if(contourArea(contours[i]) > area_ths){
+            mu.push_back(moments(contours[i]));
+            good_contours.push_back(contours[i]);
+        }
+    }
+
+    //Get the mass centers
+    for (int i = 0 ; i < mu.size() ; i ++){
+        Point2f c(mu[i].m10/mu[i].m00,mu[i].m01/mu[i].m00);
+        centroids.push_back(c);
+        if(c.y < (img_height - img_height/2)){
+            if(c.x > img_width/2){
+                r_centroids.push_back(c);
+            }
+            else{
+                l_centroids.push_back(c);
+            }
+        }
+    }
+
+    x_r.x = 0.0;
+    x_l.x = 0.0;
+
+    int r_size = r_centroids.size();
+    int l_size = l_centroids.size();
+
+    if(r_size == 0){
+    x_r.x = img_width;
+    }
+    if(l_size == 0){
+    x_l.x = 0;
+    }
+    else{
+        for (int i = 0 ; i < r_size ; i ++){
+            x_r.x += r_centroids[i].x;
+        }
+        for (int i = 0 ; i < l_size ; i ++){
+            x_l.x += l_centroids[i].x;
+        }
+        x_r.x = x_r.x/((float)r_size);
+        x_l.x = x_l.x/((float)l_size);
+    }
+
+    cout << "x_r: " << x_r << endl ;
+    cout << "x_l: " << x_l << endl << endl ;
+
+    //SHOW CENTROIDS
+    //Draw contours' centers
+    for (int i = 0 ; i < r_centroids.size() ; i ++){
+        circle(drawing,r_centroids[i],4,Scalar(0,0,255),-1,8,0);
+    }
+    for (int i = 0 ; i < l_centroids.size() ; i ++){
+        circle(drawing,l_centroids[i],4,Scalar(0,0,255),-1,8,0);
+    }
+    circle(drawing,x_r,4,Scalar(255,0,0),-1,8,0);
+    circle(drawing,x_l,4,Scalar(255,0,0),-1,8,0);
+    //imshow("Canny",cannyImg);
+    imshow("Centroids",drawing);//*/
+
+}
+
 
 void of_driving::computeGradientVectorField(){
 
@@ -852,7 +903,7 @@ void of_driving::computeGradientVectorField(){
 
     Scharr(smoothed_plane, grad_x, ddepth, 1, 0, scale);
     Scharr(smoothed_plane, grad_y, ddepth, 0, 1, scale);
-	
+
 	//Scharr(gpu_dp, gpu_gx, ddepth, 1, 0, scale);
     //Scharr(gpu_dp, gpu_gy, ddepth, 0, 1, scale);
 
@@ -980,6 +1031,47 @@ void of_driving::computeRobotVelocities(){
 	double R = Rm*sin(theta);
 	angular_vel = R ;
 
+    float lambda = 50.0;
+
+    x_r.x  = low_pass_filter(x_r.x,old_xr.x,Tc,1.0/bar_lowpass_freq);//*/
+    x_l.x  = low_pass_filter(x_l.x,old_xl.x,Tc,1.0/bar_lowpass_freq);//*/
+
+    Point2f x_rn(x_r - principal_point), x_ln(x_l - principal_point);
+    double e = x_rn.x + x_ln.x;
+    error_f << e << "; " << endl;
+
+    cout << "x_rn: " << x_rn << endl;
+    cout << "x_ln: " << x_ln << endl << endl;
+    cout << "e: " << e << endl;
+    Lx_l << - cos(camera_tilt)/camera_height, 0, x_l.x*cos(camera_tilt)/camera_height, 0, -(1 + x_l.x*x_l.x), 0 ; //<--- DOUBT: including focal length or not?
+    Lx_r << - cos(camera_tilt)/camera_height, 0, x_r.x*cos(camera_tilt)/camera_height, 0, -(1 + x_r.x*x_r.x), 0 ;
+
+    Eigen::Matrix<double,3,1> v,w;
+    Eigen::Matrix<double,6,6> W;
+    W.topLeftCorner(3,3) = cameraR;
+    W.bottomRightCorner(3,3) = cameraR;
+    v << linear_vel, 0, 0;
+
+    Lx_l = Lx_l*W;
+    Lx_r = Lx_r*W;
+
+    Eigen::Matrix<double,1,1> b;
+    Eigen::Matrix<double,1,1> proportionalAct;
+
+    proportionalAct << lambda*e;
+
+    Eigen::Matrix<double,1,3> Jv = Lx_l.block<1,3>(0,0) + Lx_r.block<1,3>(0,0);
+    Eigen::Matrix<double,1,3> Jw = Lx_l.block<1,3>(0,3) + Lx_r.block<1,3>(0,3);
+
+    b = Jv*v;
+    b += proportionalAct;
+    w = (-Jw).householderQr().solve(b);
+
+    cout << "w: " << w << endl;
+
+    old_xr.x = x_r.x;
+    old_xl.x = x_l.x;
+
     /*double xf;
     double lambda = 1;
 
@@ -993,7 +1085,6 @@ void of_driving::computeRobotVelocities(){
     cout << "camera_tilt: " << camera_tilt << endl;
     cout << "camera_height: " << camera_height << endl;
     cout << "xf: " << xf << endl;
-    Lx << - cos(camera_tilt)/camera_height, 0, xf*cos(camera_tilt)/camera_height, 0, -(1 + xf*xf), 0 ;
 
     Eigen::Matrix<double,3,1> v,w;
     Eigen::Matrix<double,6,6> W;
@@ -1056,7 +1147,7 @@ void of_driving::computeFlowDirection(){
 }
 
 
-/*void of_driving::set_cameraRotation(Mat R ){
+void of_driving::set_cameraRotation(Mat R ){
 
     cameraR(0,0) = R.at<double>(0);
     cameraR(0,1) = R.at<double>(1);
@@ -1068,7 +1159,7 @@ void of_driving::computeFlowDirection(){
     cameraR(2,1) = R.at<double>(7);
     cameraR(2,2) = R.at<double>(8);
 
-    cout << "cameraR: \n" << cameraR << endl;
+    //cout << "cameraR: \n" << cameraR << endl;
 
 }//*/
 
@@ -1208,6 +1299,7 @@ void of_driving::openFiles(const string full_path){
     filt_barFile.open((full_path + "filtp.txt").c_str(),ios::app);
     theta_f.open((full_path + "theta.txt").c_str(),ios::app);
     angularVel_f.open((full_path + "angularVel.txt").c_str(),ios::app);
+    error_f.open((full_path + "centroids_error.txt").c_str(),ios::app);
 }
 
 void of_driving::closeFiles(){
@@ -1215,6 +1307,7 @@ void of_driving::closeFiles(){
     filt_barFile.close();
     theta_f.close();
     angularVel_f.close();
+    error_f.close();
 }
 
 

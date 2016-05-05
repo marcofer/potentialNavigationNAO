@@ -223,7 +223,7 @@ void potentialNavigationNAO::setTiltHead(char key){
 
         //Get camera parameters
         // FOR ANTONIO'S CONTROL LAW
-        /*cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
+        cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
         cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
         cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
                                                   cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
@@ -240,7 +240,7 @@ void potentialNavigationNAO::setTiltHead(char key){
         cout << "cameraOrientation: \n" << cameraOrientation << endl;
 
 
-        drive.set_cameraRotation(cameraOrientation);//*/
+        drive.set_cameraRotation(cameraOrientationT);//*/
 
 
         break;
@@ -350,6 +350,8 @@ void potentialNavigationNAO::run(){
             //make the algorithm run
             updateTcAndLowPass();
 
+            updateCameraRotation();
+
             try{
                 drive.run(img,prev_img,SAVE_VIDEO);
             }
@@ -365,7 +367,7 @@ void potentialNavigationNAO::run(){
 
             //command NAO
             if((move_robot) || (manual)){
-                motionProxy.move(v,0.0f,w);
+                motionProxy.move(v,0.0f,w);//FRAME_ROBOT
             }
             else{
                 motionProxy.stopMove();
@@ -426,6 +428,22 @@ void potentialNavigationNAO::getVelocityCommands(){
         v = drive.get_linearVel(); //FRAME_ROBOT
         w = -drive.get_angularVel(); //FRAME_ROBOT
     }
+}
+
+void potentialNavigationNAO::updateCameraRotation(){
+    string cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
+    cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
+    cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
+                                              cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
+                                              cameraFrame.at(8), cameraFrame.at(9), cameraFrame.at(10));
+    camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
+    camera_tilt = M_PI/2.0 - camera_tilt;
+    camera_height = cameraFrame.at(11);
+    transpose(cameraOrientation,cameraOrientationT);
+
+    drive.set_cameraRotation(cameraOrientationT);//*/
+
+
 }
 
 void potentialNavigationNAO::updateTcAndLowPass(){
