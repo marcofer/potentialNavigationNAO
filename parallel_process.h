@@ -125,18 +125,26 @@ class ParallelDisplayImages : public cv::ParallelLoopBody {
 		cv::Mat sp;
         cv::Mat gf;
 		cv::Matx21f p_bar;
-        cv::Matx21f nf_pbar;
+        double linear_vel;
 		double angular_vel;
 		cv::Mat& total;
 		cv::Rect dpROI;
         double theta;
-        double v;
-        double w;
+        double vmax;
+        double wmax;
+        double vy;
+        double wz;
+        std::vector < cv::Point2f > lc;
+        std::vector < cv::Point2f > rc;
+        cv::Point2f xl;
+        cv::Point2f xr;
+
 
 	public:
-        ParallelDisplayImages(int cores, int flow_res, cv::Mat img_,cv::Mat of_,cv::Mat pf_,cv::Mat dp_,cv::Mat sp_, cv::Mat gf_,cv::Matx21f p_bar_,double w,cv::Mat& total_, cv::Rect roi, double th,
-                              double lin, double ang, cv::Matx21f nf_pbar_)
-            : coreNum(cores), flowResolution(flow_res), img(img_), of(of_), pf(pf_), dp(dp_), sp(sp_), gf(gf_), p_bar(p_bar_), angular_vel(w), total(total_), dpROI(roi), theta(th), v(lin), w(ang), nf_pbar(nf_pbar_){}
+        ParallelDisplayImages(int cores, int flow_res, cv::Mat img_,cv::Mat of_,cv::Mat pf_,cv::Mat dp_,cv::Mat sp_, cv::Mat gf_,cv::Matx21f p_bar_, double lv, double w,cv::Mat& total_, cv::Rect roi, double th,
+                              double lin, double ang, double vy_, double wz_, std::vector < cv::Point2f > lc_, std::vector < cv::Point2f > rc_, cv::Point2f xl_, cv::Point2f xr_)
+            : coreNum(cores), flowResolution(flow_res), img(img_), of(of_), pf(pf_), dp(dp_), sp(sp_), gf(gf_), p_bar(p_bar_), linear_vel(lv), angular_vel(w), total(total_), dpROI(roi), theta(th), vmax(lin), wmax(ang), vy(vy_),
+              wz(wz_), lc(lc_), rc(rc_), xl(xl_), xr(xr_){}
 		virtual void operator()(const cv::Range& range) const;
 
 

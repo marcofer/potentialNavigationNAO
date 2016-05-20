@@ -45,6 +45,8 @@ private:
     //flag stating if the NAO is manually or automatically driven
     bool manual;
 
+    bool record;
+
     //online structures
     string pip;
     int pport;
@@ -66,6 +68,7 @@ private:
     double pan, tilt_cmd;
     double camera_tilt, camera_height;
     Mat cameraOrientation, cameraOrientationT;
+    Mat cameraPosition;
     std::vector<float> cameraFrame;
 
     bool headset, firstKeyIgnored;
@@ -89,13 +92,13 @@ private:
 
     ofstream cycle_f, cameraRate_f;
 
-    double v, vmax;
-    double w, wmax;
+    double v, vy, vmax;
+    double w, wz, wmax; //TODO: fix names (wz is used for centroids control law, w for potential)
     double x_f;
 
     void updateTcAndLowPass();
     void updateTilt(int);
-    void updateCameraRotation();
+    void updateCameraPose();
     void enableRecording();
     void cleanAllActivities();
     void printTiltInfo();

@@ -23,15 +23,16 @@
 #include <eigen3/Eigen/Core>
 #include <eigen3/Eigen/Householder>
 #include <eigen3/Eigen/LU>
-#include <eigen3/Eigen/QR>//*/
+//#include <eigen3/Eigen/QR>//*/
+#include <eigen3/Eigen/SVD>
 
 
 #include <boost/math/tools/config.hpp>
 
 #include "parallel_process.h"
 
-#define ANGULAR_VEL_MAX 0.83 //0.83
-#define LINEAR_VEL_MAX 0.0952 //(half max vel)
+#define ANGULAR_VEL_MAX 0.1//0.83
+#define LINEAR_VEL_MAX 0.04//0.0952
 
 using namespace std;
 using namespace cv;
@@ -59,10 +60,13 @@ public:
 
     inline void set_tilt(double tilt) {camera_tilt = tilt;}
     inline void set_cameraHeight(double h) {camera_height = h;}
-    void set_cameraRotation(cv::Mat);//*/
 
-	//run function - Real time image processing algorithm
-    void run(Mat& img, Mat& prev_img, bool);
+
+    void set_cameraPose(std::vector<float>);
+
+
+    //run function - Real time image processing algorithm
+    void run(Mat& img, Mat& prev_img, bool, bool);
 
 	void setRectHeight(int rect_cmd);
 	//Print on the image he information about the current pan and tilt angles of the camera
@@ -75,7 +79,9 @@ public:
     inline double get_linearVel() {return linear_vel;}
     inline double get_angularVel() {return angular_vel;}
     inline double get_linVelMax() {return linear_vel;}
-    inline double get_angVelMax() {return Rm;}
+    inline double get_Vy() {return vy;}
+    inline double get_Wz() {return wz;}
+    inline double get_angVelMax() {return max_w;}
     inline double get_throttle() {return ankle_angle;}
     inline double get_theta() {return theta;}
     inline Matx21f get_NavVec() {return p_bar;}
@@ -97,9 +103,14 @@ private:
     double focal_length;
     double camera_height;
 
+    bool record;
+
     cv::Point2f principal_point;
     Eigen::Matrix3d K, Kinv, cameraR;
+    Eigen::Matrix<double,3,1> cameraT;
+    Eigen::Matrix4d cameraPose;
     Eigen::Matrix<double,1,6> Lx_l, Lx_r;//*/
+    double vy, wz;
 
 	int area_ths;
 
@@ -110,6 +121,7 @@ private:
     vector < Vec4i > cannyHierarchy;
     vector < Point2f > centroids, l_centroids, r_centroids;
     Point2f x_r, x_l;
+    Point2f prevx_r, prevx_l;
     Point2f old_xr, old_xl;
 
 	Mat H;
@@ -141,7 +153,9 @@ private:
 	double Tc;
 
 	//Maximum angular velocity
-	double Rm;
+    double max_w;
+    //Maximum linear velocity
+    double max_v;
 	//Old angular velocity value (for low-pass filtering)
 	double Rold;
 
@@ -259,7 +273,8 @@ private:
 	//scale factor for optcal flow
 	int of_scale;
 
-    ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f, error_f;
+    ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f, error_f, xl_f, xr_f, centr_w_f, R_f, vx_f, vy_f, wz_f, det_f, Ju_f,
+             J_f;
 
 
     /* Methods */
@@ -270,6 +285,7 @@ private:
 	void buildPlanarFlowAndDominantPlane(Mat&);
 
     void computeCentroids();
+    void velocityScaling();
 
     void computeGradientVectorField();
 	void computePotentialField();
@@ -312,6 +328,8 @@ void getFlowField(const Mat& u, const Mat& v, Mat& flowField);
 string type2str(int);
 
 void callbackButton(int,void*);
+
+template <typename T> inline T clamp (T x, T a, T b);
 
 
 #endif // DRIVING_H

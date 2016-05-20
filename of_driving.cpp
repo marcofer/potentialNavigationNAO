@@ -10,13 +10,17 @@ enum OF_ALG{LK,FARNEBACK,GPU_LK_SPARSE,GPU_LK_DENSE,GPU_FARNEBACK,GPU_BROX};
 
 of_driving::of_driving(){
 
-    Rm = ANGULAR_VEL_MAX/8.0;
-    linear_vel = LINEAR_VEL_MAX/2.0;
+    /*max_w = ANGULAR_VEL_MAX/8.0;
+    max_v = LINEAR_VEL_MAX/2.0;
+    linear_vel = LINEAR_VEL_MAX/2.0;//*/
+    max_w = ANGULAR_VEL_MAX;
+    max_v = LINEAR_VEL_MAX;
+    linear_vel = LINEAR_VEL_MAX;//*/
 
     grad_scale = 1.0;
     windows_size = 13.0;//44.0;//13.0;
     maxLayer = 2;
-    epsilon = 0.7;//0.5//0.4;//0.8;
+    epsilon = 0.7;//0.7;//0.5//0.4;//0.8;
     flowResolution = 4;
     iteration_num = 10;
     of_iterations = 3;//3;
@@ -28,7 +32,7 @@ of_driving::of_driving(){
     of_alg = 3;
     of_scale = 1;
     RANSAC_imgPercent = 0.5;
-    dp_threshold = 40;
+    dp_threshold = 40;//40
     wheelbase = 2.06;
 
     open_erode_int = open_erode*10.0;
@@ -42,6 +46,8 @@ of_driving::of_driving(){
 
 
 	angular_vel = 0.0;
+    vy = 0.0;
+    wz = 0.0;
 
 	steering = 0.0;
 	ankle_angle = 0.0;
@@ -64,6 +70,8 @@ of_driving::of_driving(){
 	gettimeofday(&start_plot,NULL);
 
 	cores_num = sysconf( _SC_NPROCESSORS_ONLN );
+
+    record = false;
 
 }
 
@@ -110,16 +118,19 @@ void of_driving::initFlows(bool save_video){
     area_ths = 400;
     x_r = Point2f(img_width,img_height/2);
     x_l = Point2f(0,img_height/2);
+    prevx_r = x_r;
+    prevx_l = x_l;
     old_xr = Point2f(img_width,img_height/2);
     old_xl = Point2f(0,img_height/2);
 
-    //focal_length = 236;
+    double fov = 0.8315; //47.64°, from the documentation
+    focal_length = (img_height/2)/tan(fov/2);
     principal_point = cv::Point2f(img_width/2,img_height/2);
     K << focal_length, 0, principal_point.x,
          0, focal_length, principal_point.y,
          0,   0,   1;
 
-    Kinv = K.inverse();//*/
+    //Kinv = K.inverse();//*/
 
     /*double ROI_width = img_width/2.0;
     double ROI_height = img_height/2.0;
@@ -304,8 +315,9 @@ void of_driving::plotPanTiltInfo(Mat& img, float tilt_cmd, float pan_cmd){
 
 }
 
-void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
+void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
 
+    record = rec;
 
 	Rect rect_ransac(ROI_x,ROI_y,ROI_width,ROI_height);
 	Mat ROI_ransac = dominant_plane(rect_ransac);
@@ -417,7 +429,9 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video){
 	
 
 	/*** MULTI-THREADED DISPLAY ***/
-    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,result_field,p_bar,angular_vel,total,rect_ransac, theta, linear_vel, Rm, noFilt_pbar));
+    parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,
+                                                   result_field,p_bar,linear_vel,angular_vel,total,rect_ransac, theta, max_v, max_w, vy, wz,
+                                                   l_centroids,r_centroids,x_l,x_r));
     if(save_video){
         record_total.write(total);
     }//*/
@@ -835,7 +849,7 @@ void of_driving::computeCentroids(){
             if(c.x > img_width/2){
                 r_centroids.push_back(c);
             }
-            else{
+            else if(c.x < img_width/2){
                 l_centroids.push_back(c);
             }
         }
@@ -844,32 +858,37 @@ void of_driving::computeCentroids(){
     x_r.x = 0.0;
     x_l.x = 0.0;
 
+    x_r = Point2f(0,0);
+    x_l = Point2f(0,0);
+
     int r_size = r_centroids.size();
     int l_size = l_centroids.size();
 
+    cout << "r_size: " << r_size << endl;
+    cout << "l_size: " << l_size << endl;
+
     if(r_size == 0){
-    x_r.x = img_width;
-    }
-    if(l_size == 0){
-    x_l.x = 0;
+    x_r = Point2f(img_width,prevx_r.y);
     }
     else{
         for (int i = 0 ; i < r_size ; i ++){
-            x_r.x += r_centroids[i].x;
+            x_r = Point2f(x_r + r_centroids[i]);
         }
-        for (int i = 0 ; i < l_size ; i ++){
-            x_l.x += l_centroids[i].x;
-        }
-        x_r.x = x_r.x/((float)r_size);
-        x_l.x = x_l.x/((float)l_size);
+        x_r = x_r*(1.0/((float)r_size));
     }
-
-    cout << "x_r: " << x_r << endl ;
-    cout << "x_l: " << x_l << endl << endl ;
+    if(l_size == 0){
+    x_l = Point2f(0,prevx_l.y);
+    }
+    else{
+        for (int i = 0 ; i < l_size ; i ++){
+            x_l = Point2f(x_l + l_centroids[i]);
+        }
+        x_l = x_l*(1.0/((float)l_size));
+    }
 
     //SHOW CENTROIDS
     //Draw contours' centers
-    for (int i = 0 ; i < r_centroids.size() ; i ++){
+    /*for (int i = 0 ; i < r_centroids.size() ; i ++){
         circle(drawing,r_centroids[i],4,Scalar(0,0,255),-1,8,0);
     }
     for (int i = 0 ; i < l_centroids.size() ; i ++){
@@ -877,8 +896,10 @@ void of_driving::computeCentroids(){
     }
     circle(drawing,x_r,4,Scalar(255,0,0),-1,8,0);
     circle(drawing,x_l,4,Scalar(255,0,0),-1,8,0);
-    //imshow("Canny",cannyImg);
     imshow("Centroids",drawing);//*/
+
+    prevx_r = x_r;
+    prevx_l = x_l;
 
 }
 
@@ -899,7 +920,7 @@ void of_driving::computeGradientVectorField(){
 	GpuMat gpu_dp(dominant_plane);
 
 	GaussianBlur(dominant_plane,smoothed_plane,GaussSize,sigmaX,0);
-	//GaussianBlur(gpu_dp,gpu_dp,GaussSize,sigmaX,0);
+    //GaussianBlur(gpu_dp,gpu_dp,GaussSize,sigmaX,0);
 
     Scharr(smoothed_plane, grad_x, ddepth, 1, 0, scale);
     Scharr(smoothed_plane, grad_y, ddepth, 0, 1, scale);
@@ -1018,7 +1039,8 @@ void of_driving::computeControlForceOrientation(){
 		theta = 0.0;
 	}
 
-    theta_f << theta << "; " << endl;
+    if(record)
+        theta_f << theta << "; " << endl;
 
     //theta = low_pass_filter(theta,theta_old,Tc,1.0/ctrl_lowpass_freq);
     //cout << "theta: " << theta*180.0/M_PI << endl;
@@ -1028,101 +1050,170 @@ void of_driving::computeControlForceOrientation(){
 
 void of_driving::computeRobotVelocities(){
 
-	double R = Rm*sin(theta);
+    /*** Previous control law ***/
+    double R = max_w*sin(theta);
 	angular_vel = R ;
 
-    float lambda = 50.0;
+    if(record)
+        angularVel_f << angular_vel << "; " << endl;
 
-    x_r.x  = low_pass_filter(x_r.x,old_xr.x,Tc,1.0/bar_lowpass_freq);//*/
-    x_l.x  = low_pass_filter(x_l.x,old_xl.x,Tc,1.0/bar_lowpass_freq);//*/
-
-    Point2f x_rn(x_r - principal_point), x_ln(x_l - principal_point);
-    double e = x_rn.x + x_ln.x;
-    error_f << e << "; " << endl;
-
-    cout << "x_rn: " << x_rn << endl;
-    cout << "x_ln: " << x_ln << endl << endl;
-    cout << "e: " << e << endl;
-    Lx_l << - cos(camera_tilt)/camera_height, 0, x_l.x*cos(camera_tilt)/camera_height, 0, -(1 + x_l.x*x_l.x), 0 ; //<--- DOUBT: including focal length or not?
-    Lx_r << - cos(camera_tilt)/camera_height, 0, x_r.x*cos(camera_tilt)/camera_height, 0, -(1 + x_r.x*x_r.x), 0 ;
-
-    Eigen::Matrix<double,3,1> v,w;
-    Eigen::Matrix<double,6,6> W;
-    W.topLeftCorner(3,3) = cameraR;
-    W.bottomRightCorner(3,3) = cameraR;
-    v << linear_vel, 0, 0;
-
-    Lx_l = Lx_l*W;
-    Lx_r = Lx_r*W;
-
-    Eigen::Matrix<double,1,1> b;
-    Eigen::Matrix<double,1,1> proportionalAct;
-
-    proportionalAct << lambda*e;
-
-    Eigen::Matrix<double,1,3> Jv = Lx_l.block<1,3>(0,0) + Lx_r.block<1,3>(0,0);
-    Eigen::Matrix<double,1,3> Jw = Lx_l.block<1,3>(0,3) + Lx_r.block<1,3>(0,3);
-
-    b = Jv*v;
-    b += proportionalAct;
-    w = (-Jw).householderQr().solve(b);
-
-    cout << "w: " << w << endl;
-
-    old_xr.x = x_r.x;
-    old_xl.x = x_l.x;
-
-    /*double xf;
-    double lambda = 1;
-
-    //cout << "uf: " << p_bar << endl;
-
-    xf = (p_bar(0))/focal_length; //I put the '+' because p_bar is a free vector, so I need to sum it up with the principal point to get the ... no wait, maybe the principal point should
-                                                      //not be put at all
-
-    //cout << "xf: " << xf << endl;
-
-    cout << "camera_tilt: " << camera_tilt << endl;
-    cout << "camera_height: " << camera_height << endl;
-    cout << "xf: " << xf << endl;
-
-    Eigen::Matrix<double,3,1> v,w;
-    Eigen::Matrix<double,6,6> W;
-    W.topLeftCorner(3,3) = cameraR;
-    W.bottomRightCorner(3,3) = cameraR;
-    v << linear_vel, 0, 0;
-
-    Lx = Lx*W;
-
-    Eigen::Matrix<double,1,1> b;
-    Eigen::Matrix<double,1,1> proportionalAct;
-
-    proportionalAct << lambda*xf;
-
-    Eigen::Matrix<double,1,3> Jv = Lx.block<1,3>(0,0);
-    Eigen::Matrix<double,1,3> Jw = Lx.block<1,3>(0,3);
-
-    b = Jv*v;
-    b += proportionalAct;
-    w = (-Jw).householderQr().solve(b);
-
-    cout << "w: \n" << w << endl;
-
-
-
-    angularVel_f << angular_vel << "; " << endl;//*/
-    //cout << "w: " << angular_vel << endl;
-	//R = low_pass_filter(R,Rold,Tc,1.0/ctrl_lowpass_freq);
-	//Rold = R;
-
-	if(ankle_angle != -1){
+    if(ankle_angle != -1){
         steering = wheelbase * R/linear_vel;
     }
     else{
         steering = 0.0;
     }
 
-	ankle_angle = 0.0;
+    ankle_angle = 0.0;
+    /*****************************************/
+
+    /*** Visual servoing control law ***/
+    double Zl, Zr, hc, gamma, f, xl, yl, xr, yr;
+    hc = camera_height;
+    gamma = camera_tilt;
+    f = focal_length;
+    //Eigen::Matrix<double,2,1> e;
+    double e;
+
+    Eigen::Matrix<double,2,1> cmd_vel; //vy, wz
+    Eigen::Matrix<double,2,1> Jvx;
+    Eigen::Matrix<double,1,1> v;
+    Eigen::Matrix3d tskew;
+    Eigen::Matrix<double,6,6> W = Eigen::Matrix<double,6,6>::Zero() ;
+    Eigen::Matrix<double,2,2> Ju;
+    Eigen::Matrix<double,1,6> J;
+    Eigen::Matrix<double,1,3> Jv,Jw;
+
+    Point2f c_rn, c_ln;
+    float lambda = 2.5;
+
+    c_rn = (x_r - principal_point);
+    c_ln = (x_l - principal_point);
+
+    xl = c_ln.x;
+    yl = c_ln.y;
+    xr = c_rn.x;
+    yr = c_rn.y;
+
+    //Compute the desired depths for the centroids
+    Zl = hc/cos(gamma + atan2(yl,f));
+    Zr = hc/cos(gamma + atan2(yr,f));
+
+    //Define the error
+    //e << xl + img_width/2 , xr - img_width/2;
+    e = xl + xr;
+
+    //double eps = 5;
+    //if (abs(xl + xr) < eps){
+    // Define the interaction matrices
+    Lx_l << - f/Zl, 0, xl/Zl, xl*yl/f, -(f + xl*xl/f), yl ;
+    Lx_r << - f/Zr, 0, xr/Zr, xr*yr/f, -(f + xr*xr/f), yr ;
+
+    // Assuming that the camera frame differs from the robot frame in just a translation along the vertical axis and a tilt angle,
+    // write the corresponding transformation matrix (cameraR is the rotation matrix R_c_r, cameraT is translation vector t_c_r)
+
+    bool approx = false; //state if using the simplified approximated camera pose or the real one
+    Eigen::Matrix3d cR;
+    Eigen::Matrix<double,3,1> cT;
+    if(approx){
+        cR <<           0, -1,           0,
+                   -cos(gamma),  0, -sin(gamma),
+                    sin(gamma),  0, -cos(gamma);
+
+        cT << 0, hc*sin(gamma), hc*cos(gamma);
+    }
+
+    // Write the translation vector as skew-symmetric matrix for the cross-product
+    tskew <<          0, -cameraT(2),  cameraT(1),
+             cameraT(2),           0, -cameraT(0),
+            -cameraT(1),  cameraT(0),           0;
+
+    // Build the twist matrix
+    W.topLeftCorner(3,3) = cameraR;
+    W.topRightCorner(3,3) = tskew*cameraR;
+    W.bottomRightCorner(3,3) = cameraR;
+
+    // Assume the linear forward velocity as constant
+    v << linear_vel;
+
+    // Multiply the interaction matrices by the twist matrix
+    Lx_l = Lx_l*W;
+    Lx_r = Lx_r*W;
+
+    J = Lx_l + Lx_r;
+    Jv = J.block<1,3>(0,0);
+    Jw = J.block<1,3>(0,3);
+
+    Jvx << Lx_l(0), Lx_r(0);
+    Ju << Lx_l(1), Lx_l(5),
+          Lx_r(1), Lx_r(5);
+
+    double detJu = Ju.determinant();
+    Eigen::Matrix<double,2,2> Juinv = Ju.inverse();
+    //Eigen::JacobiSVD<Eigen::MatrixXd > svd(-Ju, Eigen::ComputeThinU | Eigen::ComputeThinV);
+    //cmd_vel = -Juinv*(lambda*e + Jvx*v);
+
+    //double lambda_w = 1.0;
+    //cmd_vel(1) = - 1.0/Lx_r(5)*(lambda_w*e(1) + Lx_r(0)*v(0));
+    //vy = 0.0;
+
+    cmd_vel(1) = -(lambda*e + Jv(0)*v(0))/Jw(2);
+    wz = cmd_vel(1);
+    vy = 0.0;
+
+    /*vy = cmd_vel(0);
+    wz = cmd_vel(1);//*/
+
+
+    velocityScaling();
+    //}
+    /*else{
+        vy = 0.0;
+        wz = 0.0;
+    }//*/
+
+    if(record){
+        /*error_f << e(0,0) << ", "
+                << e(1,0) << "; " << endl;//*/
+        error_f << e << "; " << endl;
+
+        xl_f << xl << ", " << yl << "; " << endl;
+        xr_f << xr << ", " << yr << "; " << endl;
+        det_f << detJu << "; " << endl;
+        vx_f << linear_vel << "; " << endl;
+        vy_f << cmd_vel(0) << ", " << vy << "; " << endl;
+        wz_f << cmd_vel(1) << ", " << wz << "; " << endl;
+        Ju_f << Juinv(0,0) << ", " << Juinv(0,1) << ", " << Juinv(1,0) << ", " << Juinv(1,1) << ";" << endl;
+        J_f << Jv(0) << ", " << Jw(2) << "; " << endl;
+    }
+
+    cout << "vx: " << linear_vel << "\t vy: " << vy << "\t wz: " << wz << endl;
+
+}
+
+void of_driving::velocityScaling(){
+
+    double k1,k2;
+    double vx = max_v;
+    double v_norm = sqrt(vx*vx + vy*vy);
+
+    if( v_norm > max_v){
+        cout << "LINEAR VELOCITY SATURATED!!!" << endl;
+        k1 = max_v/v_norm;
+        vx *= k1;
+        vy *= k1;
+        wz *= k1;
+    }
+    double w_norm = abs(wz);
+    if(w_norm > max_w){
+        cout << "ANGULAR VELOCITY SATURATED!!!" << endl;
+        k2 = max_w/w_norm;
+        vx *= k2;
+        vy *= k2;
+        wz *= k2;
+    }
+
+    linear_vel = vx;
 }
 
 void of_driving::computeFlowDirection(){
@@ -1147,22 +1238,40 @@ void of_driving::computeFlowDirection(){
 }
 
 
-void of_driving::set_cameraRotation(Mat R ){
 
-    cameraR(0,0) = R.at<double>(0);
-    cameraR(0,1) = R.at<double>(1);
-    cameraR(0,2) = R.at<double>(2);
-    cameraR(1,0) = R.at<double>(3);
-    cameraR(1,1) = R.at<double>(4);
-    cameraR(1,2) = R.at<double>(5);
-    cameraR(2,0) = R.at<double>(6);
-    cameraR(2,1) = R.at<double>(7);
-    cameraR(2,2) = R.at<double>(8);
+void of_driving::set_cameraPose(std::vector<float> pose){
 
-    //cout << "cameraR: \n" << cameraR << endl;
+    //This is the matrix Trc expressing the camera frame (not optical) wrt to the robot frame
+    cameraPose(0,0) = pose.at(0);
+    cameraPose(0,1) = pose.at(1);
+    cameraPose(0,2) = pose.at(2);
+    cameraPose(0,3) = pose.at(3);
+    cameraPose(1,0) = pose.at(4);
+    cameraPose(1,1) = pose.at(5);
+    cameraPose(1,2) = pose.at(6);
+    cameraPose(1,3) = pose.at(7);
+    cameraPose(2,0) = pose.at(8);
+    cameraPose(2,1) = pose.at(9);
+    cameraPose(2,2) = pose.at(10);
+    cameraPose(2,3) = pose.at(11);
+    cameraPose(3,0) = 0;
+    cameraPose(3,1) = 0;
+    cameraPose(3,2) = 0;
+    cameraPose(3,3) = 1;
 
-}//*/
+    Eigen::Matrix4d Tco, Tro, Tor; //cameraPose is Trc
+    Tco <<  0,  0, 1, 0,
+           -1,  0, 0, 0,
+            0, -1, 0, 0,
+            0,  0, 0, 1;
 
+    Tro = cameraPose*Tco;
+    Tor = Tro.inverse();
+
+    cameraR = Tor.topLeftCorner(3,3);
+    cameraT = Tor.block<3,1>(0,3);
+
+}
 
 /*** SINGLE-THREADED DISPLAY FUNCTION ***/
 Mat of_driving::displayImages(Mat& img){
@@ -1300,6 +1409,16 @@ void of_driving::openFiles(const string full_path){
     theta_f.open((full_path + "theta.txt").c_str(),ios::app);
     angularVel_f.open((full_path + "angularVel.txt").c_str(),ios::app);
     error_f.open((full_path + "centroids_error.txt").c_str(),ios::app);
+    xl_f.open((full_path + "xl.txt").c_str(),ios::app);
+    xr_f.open((full_path + "xr.txt").c_str(),ios::app);
+    R_f.open((full_path + "R.txt").c_str(),ios::app);
+    vx_f.open((full_path + "vx.txt").c_str(),ios::app);
+    vy_f.open((full_path + "vy.txt").c_str(),ios::app);
+    wz_f.open((full_path + "wz.txt").c_str(),ios::app);
+    det_f.open((full_path + "detJu.txt").c_str(),ios::app);
+    Ju_f.open((full_path + "Ju.txt").c_str(),ios::app);
+    J_f.open((full_path + "J.txt").c_str(),ios::app);
+
 }
 
 void of_driving::closeFiles(){
@@ -1308,6 +1427,15 @@ void of_driving::closeFiles(){
     theta_f.close();
     angularVel_f.close();
     error_f.close();
+    xl_f.close();
+    xr_f.close();
+    R_f.close();
+    vx_f.close();
+    vy_f.close();
+    wz_f.close();
+    det_f.close();
+    Ju_f.close();
+    J_f.close();
 }
 
 
@@ -1413,5 +1541,3 @@ void getFlowField(const Mat& u, const Mat& v, Mat& flowField)
 
 
 }
-
-

@@ -145,6 +145,8 @@ void potentialNavigationNAO::init(){
     }
     gettimeofday(&start_tod,NULL);
     elapsed_tod = 0.0;
+
+    record = false;
 }
 
 
@@ -202,7 +204,9 @@ void potentialNavigationNAO::setTiltHead(char key){
     string cameraFrameName;
 
     // Capture image from subscribed camera
-    ALimg = cameraProxy.getImageRemote(cameraName);
+    if(online){
+        ALimg = cameraProxy.getImageRemote(cameraName);
+    }
     printTiltInfo();
 
     switch(key){
@@ -221,26 +225,20 @@ void potentialNavigationNAO::setTiltHead(char key){
             enableRecording();
         }
 
+
+        updateCameraPose();
         //Get camera parameters
-        // FOR ANTONIO'S CONTROL LAW
-        cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
-        cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
-        cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
-                                                  cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
-                                                  cameraFrame.at(8), cameraFrame.at(9), cameraFrame.at(10));
+        /*cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
+        cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,true);
         camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
         camera_tilt = M_PI/2.0 - camera_tilt;
         camera_height = cameraFrame.at(11);
-        transpose(cameraOrientation,cameraOrientationT);
-
         cout << "camera_tilt: " << camera_tilt << endl;
+        cout << "camera height: " << camera_height << endl;
         drive.set_tilt(camera_tilt);
         drive.set_cameraHeight(camera_height);
+        drive.set_cameraPose(cameraFrame);//*/
 
-        cout << "cameraOrientation: \n" << cameraOrientation << endl;
-
-
-        drive.set_cameraRotation(cameraOrientationT);//*/
 
 
         break;
@@ -255,6 +253,20 @@ void potentialNavigationNAO::setTiltHead(char key){
     double fracSpeed = 0.2;
 
     motionProxy.setAngles(names,angles,fracSpeed);
+
+    updateCameraPose();
+    /*cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
+    cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,true);
+    camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
+    camera_tilt = M_PI/2.0 - camera_tilt;
+    cout << "camera_tilt: " << camera_tilt*180.0/M_PI << endl;
+    camera_height = cameraFrame.at(11);
+    drive.set_tilt(camera_tilt);
+    drive.set_cameraHeight(camera_height);
+    drive.set_cameraPose(cameraFrame);//*/
+
+
+
 }
 
 
@@ -274,6 +286,8 @@ void potentialNavigationNAO::updateTilt(int dtilt){
     tilt_cmd += (double)dtilt*delta;
 
     tilt_cmd = (tilt_cmd < MAXPITCH) ? ((tilt_cmd > MINPITCH) ? (tilt_cmd) : (MINPITCH)) : (MAXPITCH) ;
+
+
 }
 
 void potentialNavigationNAO::run(){
@@ -293,7 +307,7 @@ void potentialNavigationNAO::run(){
     cout << "AUTONOMOUS CONTROL" << endl ;
 
     if(!online){
-        drive.createWindowAndTracks();
+        cv::namedWindow("Phantom image",WINDOW_AUTOSIZE);
     }
 
     while(true){
@@ -305,7 +319,7 @@ void potentialNavigationNAO::run(){
             break;
 
 
-        if(online && !headset){
+        if(!headset){
             setTiltHead(key);
         }
         else{
@@ -348,12 +362,13 @@ void potentialNavigationNAO::run(){
             OCVimage.copyTo(img);
 
             //make the algorithm run
-            updateTcAndLowPass();
 
-            updateCameraRotation();
+            //Update needed variables for the current step
+            updateTcAndLowPass();
+            updateCameraPose();
 
             try{
-                drive.run(img,prev_img,SAVE_VIDEO);
+                drive.run(img,prev_img,SAVE_VIDEO,record);
             }
             catch(...){
                 cerr << "Problem in drive.run. " << endl;
@@ -367,7 +382,8 @@ void potentialNavigationNAO::run(){
 
             //command NAO
             if((move_robot) || (manual)){
-                motionProxy.move(v,0.0f,w);//FRAME_ROBOT
+                //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
+                motionProxy.move(v,vy,wz);//FRAME_ROBOT
             }
             else{
                 motionProxy.stopMove();
@@ -391,6 +407,7 @@ short int potentialNavigationNAO::catchState(char key){
     }
     else if(key=='g'){
         cout << "Go NAO!" << endl;
+        record = true;
         if(!manual) move_robot = true;
     }
     else if(key=='s'){
@@ -426,23 +443,22 @@ void potentialNavigationNAO::getVelocityCommands(){
     }
     else{
         v = drive.get_linearVel(); //FRAME_ROBOT
-        w = -drive.get_angularVel(); //FRAME_ROBOT
+        vy = drive.get_Vy(); //FRAME_ROBOT
+        wz = drive.get_Wz(); //FRAME_ROBOT
+        //w = -drive.get_angularVel(); //FRAME_ROBOT
     }
 }
 
-void potentialNavigationNAO::updateCameraRotation(){
+void potentialNavigationNAO::updateCameraPose(){
     string cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
-    cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,false);
-    cameraOrientation = (Mat_<double>(3,3) << cameraFrame.at(0), cameraFrame.at(1), cameraFrame.at(2),
-                                              cameraFrame.at(4), cameraFrame.at(5), cameraFrame.at(6),
-                                              cameraFrame.at(8), cameraFrame.at(9), cameraFrame.at(10));
+    cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,true);
     camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
-    camera_tilt = M_PI/2.0 - camera_tilt;
-    camera_height = cameraFrame.at(11);
-    transpose(cameraOrientation,cameraOrientationT);
-
-    drive.set_cameraRotation(cameraOrientationT);//*/
-
+    camera_tilt = M_PI/2.0 - camera_tilt; //should be always 1.2° (39.7°) for top (bottom camera)
+    camera_height = cameraFrame.at(11); //should be always 0.45831m for bottom camera
+    cout << "cameraFrame size: " << cameraFrame.size() << endl;
+    drive.set_cameraPose(cameraFrame);
+    drive.set_tilt(camera_tilt);
+    drive.set_cameraHeight(camera_height);
 
 }
 

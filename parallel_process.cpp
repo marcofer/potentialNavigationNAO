@@ -261,7 +261,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
         }       
 
         if(k == 4){
-            Mat gradient_img;
+            /*Mat gradient_img;
             cvtColor(sp,gradient_img,CV_GRAY2BGR);
 
             for (int i = 0 ; i < img.rows ; i+= flowResolution*2){
@@ -272,7 +272,25 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
                     arrowedLine2(gradient_img,p,p2,Scalar(0,255,0),0.1,8,0,0.1);
                 }
             }
-            gradient_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));
+            gradient_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
+
+            //SHOW CENTROIDS
+            //Draw contours' centers
+            Mat centroid_img;
+            dp.copyTo(centroid_img);
+            bitwise_not(centroid_img,centroid_img);
+            cvtColor(centroid_img,centroid_img,CV_GRAY2BGR);
+
+            for (int i = 0 ; i < rc.size() ; i ++){
+                circle(centroid_img,rc[i],4,Scalar(255,0,0),-1,8,0);
+            }
+            for (int i = 0 ; i < lc.size() ; i ++){
+                circle(centroid_img,lc[i],4,Scalar(255,0,0),-1,8,0);
+            }
+            circle(centroid_img,xr,4,Scalar(0,0,255),-1,8,0);
+            circle(centroid_img,xl,4,Scalar(0,0,0255),-1,8,0);
+            centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
+
         }        
 
         if(k == 5){
@@ -284,11 +302,11 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             double pxmax = 20.0;
             Point2f center(img.cols/2,img.rows/2);
             Point2f pb(p_bar(0),p_bar(1));
-            Point2f nfpb(nf_pbar(0),nf_pbar(1));
             Point2f y(0,-1);
+            Point2f Vy(vy,0);
 
             pb.x = pb.x*dmax/pxmax;
-            nfpb.x = nfpb.x*dmax/pxmax;
+            Vy.x = Vy.x*dmax/pxmax;
 
             //bar_length
             double bar_length = img.cols/2 - 10.0;
@@ -300,11 +318,11 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             rectangle(cf_img,v1,v2,Scalar(100,100,100),2);
 
             //w_bar
-            const double angular_vel_max = w;
-            const double linear_vel_max = v;
+            const double angular_vel_max = wmax;
+            const double linear_vel_max = vmax;
 
             double w_value = angular_vel * (bar_length/2) / angular_vel_max ;
-            double v_value = (linear_vel_max/2)/linear_vel_max*(bar_length/2);
+            double v_value = (linear_vel)/linear_vel_max*(bar_length/2);
             
             double w_red = abs(w_value)/(bar_length/2)*255.0 ;
             double w_green = 255.0 - w_red;            
@@ -365,8 +383,8 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
             // Navigation Vector visual information
             arrowedLine2(cf_img,center,center + y*50,Scalar(255,0,0),3.0,8,0,0.1);
-            arrowedLine2(cf_img,center,center + pb,Scalar(0,255,0),3.0,1,0,0.1);
-            arrowedLine2(cf_img,center,center + nfpb,Scalar(0,255,255),3.0,1,0,0.1);
+            //arrowedLine2(cf_img,center,center + pb,Scalar(0,255,0),3.0,1,0,0.1);
+            //arrowedLine2(cf_img,center,center + Vy,Scalar(255,255,0),3.0,1,0,0.1);
 
 
 
