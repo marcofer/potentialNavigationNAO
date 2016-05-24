@@ -276,6 +276,12 @@ private:
     timeval time_tod, start_plot;
 
 
+    /*** FeatureDynamics branch structures ***/
+    void findGroundBoundaries();
+    std::vector < vector < Point > > contours, good_contours;
+    std::vector < cv::Vec4i > hierarchy;
+
+
     //*** GPU BROX OPTICAL FLOW ***/
 	double scale;
 	int scale_int;

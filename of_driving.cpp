@@ -795,9 +795,40 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 
     //imshow("ROI_ransac",ROI_ransac);
     
+    findGroundBoundaries();
 
 }
 
+
+void of_driving::findGroundBoundaries(){
+
+    contours.clear();
+    good_contours.clear();
+    hierarchy.clear();
+
+    //Extract boundary of the dominant plane image
+    Mat dpImg;
+    dominant_plane.copyTo(dpImg);
+    findContours( dpImg, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0) );
+
+    for (int i = 0 ; i < contours.size() ; i ++){
+        if(contours[i])
+    }
+
+    // Draw contours
+    Mat drawing = Mat::zeros( dpImg.size(), CV_8UC3 );
+    for( int i = 0; i< contours.size(); i++ )
+       {
+         Scalar color = Scalar(0,255,0);
+         drawContours( drawing, contours, i, color, 2, 8, hierarchy, 0, Point() );
+       }
+
+    /// Show in a window
+    namedWindow( "Contours", CV_WINDOW_AUTOSIZE );
+    imshow( "Contours", drawing );
+
+
+}
 
 void of_driving::computeGradientVectorField(){
 
@@ -947,50 +978,6 @@ void of_driving::computeRobotVelocities(){
 	double R = Rm*sin(theta);
 	angular_vel = R ;
 
-    /*double xf;
-    double lambda = 1;
-
-    //cout << "uf: " << p_bar << endl;
-
-    xf = (p_bar(0))/focal_length; //I put the '+' because p_bar is a free vector, so I need to sum it up with the principal point to get the ... no wait, maybe the principal point should
-                                                      //not be put at all
-
-    //cout << "xf: " << xf << endl;
-
-    cout << "camera_tilt: " << camera_tilt << endl;
-    cout << "camera_height: " << camera_height << endl;
-    cout << "xf: " << xf << endl;
-    Lx << - cos(camera_tilt)/camera_height, 0, xf*cos(camera_tilt)/camera_height, 0, -(1 + xf*xf), 0 ;
-
-    Eigen::Matrix<double,3,1> v,w;
-    Eigen::Matrix<double,6,6> W;
-    W.topLeftCorner(3,3) = cameraR;
-    W.bottomRightCorner(3,3) = cameraR;
-    v << linear_vel, 0, 0;
-
-    Lx = Lx*W;
-
-    Eigen::Matrix<double,1,1> b;
-    Eigen::Matrix<double,1,1> proportionalAct;
-
-    proportionalAct << lambda*xf;
-
-    Eigen::Matrix<double,1,3> Jv = Lx.block<1,3>(0,0);
-    Eigen::Matrix<double,1,3> Jw = Lx.block<1,3>(0,3);
-
-    b = Jv*v;
-    b += proportionalAct;
-    w = (-Jw).householderQr().solve(b);
-
-    cout << "w: \n" << w << endl;
-
-
-
-    angularVel_f << angular_vel << "; " << endl;//*/
-    //cout << "w: " << angular_vel << endl;
-	//R = low_pass_filter(R,Rold,Tc,1.0/ctrl_lowpass_freq);
-	//Rold = R;
-
 	if(ankle_angle != -1){
         steering = wheelbase * R/linear_vel;
     }
@@ -1021,23 +1008,6 @@ void of_driving::computeFlowDirection(){
 
     imshow("atanMat",atanMat);
 }
-
-
-/*void of_driving::set_cameraRotation(Mat R ){
-
-    cameraR(0,0) = R.at<double>(0);
-    cameraR(0,1) = R.at<double>(1);
-    cameraR(0,2) = R.at<double>(2);
-    cameraR(1,0) = R.at<double>(3);
-    cameraR(1,1) = R.at<double>(4);
-    cameraR(1,2) = R.at<double>(5);
-    cameraR(2,0) = R.at<double>(6);
-    cameraR(2,1) = R.at<double>(7);
-    cameraR(2,2) = R.at<double>(8);
-
-    cout << "cameraR: \n" << cameraR << endl;
-
-}//*/
 
 
 /*** SINGLE-THREADED DISPLAY FUNCTION ***/
