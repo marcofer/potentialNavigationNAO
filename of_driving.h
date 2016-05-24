@@ -109,7 +109,6 @@ private:
     Eigen::Matrix3d K, Kinv, cameraR;
     Eigen::Matrix<double,3,1> cameraT;
     Eigen::Matrix4d cameraPose;
-    Eigen::Matrix<double,1,6> Lx_l, Lx_r;//*/
     double vy, wz;
 
 	int area_ths;

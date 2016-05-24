@@ -455,7 +455,6 @@ void potentialNavigationNAO::updateCameraPose(){
     camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
     camera_tilt = M_PI/2.0 - camera_tilt; //should be always 1.2° (39.7°) for top (bottom camera)
     camera_height = cameraFrame.at(11); //should be always 0.45831m for bottom camera
-    cout << "cameraFrame size: " << cameraFrame.size() << endl;
     drive.set_cameraPose(cameraFrame);
     drive.set_tilt(camera_tilt);
     drive.set_cameraHeight(camera_height);

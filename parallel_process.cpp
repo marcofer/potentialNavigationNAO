@@ -321,7 +321,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             const double angular_vel_max = wmax;
             const double linear_vel_max = vmax;
 
-            double w_value = angular_vel * (bar_length/2) / angular_vel_max ;
+            double w_value = wz * (bar_length/2) / angular_vel_max ;
             double v_value = (linear_vel)/linear_vel_max*(bar_length/2);
             
             double w_red = abs(w_value)/(bar_length/2)*255.0 ;
@@ -364,7 +364,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
            
             text_str = "";
             convert.str(""); convert.clear();
-            convert << setprecision(4) << angular_vel;
+            convert << setprecision(4) << wz;
             text_str = convert.str();
             wvalue_size = getTextSize(text_str,1,font_scale,1,0);
             putText(cf_img, text_str,Point(w_size.width + 10,w2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);

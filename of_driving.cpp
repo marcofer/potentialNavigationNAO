@@ -855,9 +855,6 @@ void of_driving::computeCentroids(){
         }
     }
 
-    x_r.x = 0.0;
-    x_l.x = 0.0;
-
     x_r = Point2f(0,0);
     x_l = Point2f(0,0);
 
@@ -1072,8 +1069,9 @@ void of_driving::computeRobotVelocities(){
     hc = camera_height;
     gamma = camera_tilt;
     f = focal_length;
-    //Eigen::Matrix<double,2,1> e;
-    double e;
+
+    Eigen::Matrix<double,2,1> e;
+    double err;
 
     Eigen::Matrix<double,2,1> cmd_vel; //vy, wz
     Eigen::Matrix<double,2,1> Jvx;
@@ -1083,9 +1081,18 @@ void of_driving::computeRobotVelocities(){
     Eigen::Matrix<double,2,2> Ju;
     Eigen::Matrix<double,1,6> J;
     Eigen::Matrix<double,1,3> Jv,Jw;
-
+    Eigen::Matrix<double,1,6> Lx_l, Lx_r;
+    Eigen::Matrix<double,2,6> L_l, L_r;
+    Eigen::Matrix<double,1,6> Lxl, Lxr, Lyl, Lyr;
     Point2f c_rn, c_ln;
-    float lambda = 2.5;
+    float lambda = 1.0;//2.5
+    Eigen::Matrix2d lambda_d;
+    lambda_d << 1.0, 0.0,
+              0.0, 0.1;
+    double detJu;
+    Eigen::Matrix<double,2,2> Juinv;
+
+    bool single_control_var = false;
 
     c_rn = (x_r - principal_point);
     c_ln = (x_l - principal_point);
@@ -1099,15 +1106,29 @@ void of_driving::computeRobotVelocities(){
     Zl = hc/cos(gamma + atan2(yl,f));
     Zr = hc/cos(gamma + atan2(yr,f));
 
-    //Define the error
-    //e << xl + img_width/2 , xr - img_width/2;
-    e = xl + xr;
+    if(single_control_var){
 
-    //double eps = 5;
-    //if (abs(xl + xr) < eps){
-    // Define the interaction matrices
-    Lx_l << - f/Zl, 0, xl/Zl, xl*yl/f, -(f + xl*xl/f), yl ;
-    Lx_r << - f/Zr, 0, xr/Zr, xr*yr/f, -(f + xr*xr/f), yr ;
+        //Define the error
+        err = xl + xr;
+
+        // Define the interaction matrices
+        Lx_l << - f/Zl, 0, xl/Zl, xl*yl/f, -(f + xl*xl/f), yl ;
+        Lx_r << - f/Zr, 0, xr/Zr, xr*yr/f, -(f + xr*xr/f), yr ;
+
+    }
+    else{
+        //Define the error
+        //e << xl + xr , yr - yl;
+        e << yr - yl, xl + xr ;
+
+        // Define the interaction matrices
+        L_l << - f/Zl,     0, xl/Zl,       xl*yl/f, -(f + xl*xl/f),  yl,
+                    0, -f/Zl, yl/Zl, (f + yl*yl/f),       -xl*yl/f, -xl;
+
+        L_r << - f/Zr,     0, xr/Zr,       xr*yr/f, -(f + xr*xr/f),  yr,
+                    0, -f/Zr, yr/Zr, (f + yr*yr/f),       -xr*yr/f, -xr;//*/
+    }
+
 
     // Assuming that the camera frame differs from the robot frame in just a translation along the vertical axis and a tilt angle,
     // write the corresponding transformation matrix (cameraR is the rotation matrix R_c_r, cameraT is translation vector t_c_r)
@@ -1136,58 +1157,85 @@ void of_driving::computeRobotVelocities(){
     // Assume the linear forward velocity as constant
     v << linear_vel;
 
-    // Multiply the interaction matrices by the twist matrix
-    Lx_l = Lx_l*W;
-    Lx_r = Lx_r*W;
 
-    J = Lx_l + Lx_r;
-    Jv = J.block<1,3>(0,0);
-    Jw = J.block<1,3>(0,3);
+    if(single_control_var){
 
-    Jvx << Lx_l(0), Lx_r(0);
-    Ju << Lx_l(1), Lx_l(5),
-          Lx_r(1), Lx_r(5);
+        // Multiply the interaction matrices by the twist matrix
+        Lx_l = Lx_l*W;
+        Lx_r = Lx_r*W;
+        J = Lx_l + Lx_r;
 
-    double detJu = Ju.determinant();
-    Eigen::Matrix<double,2,2> Juinv = Ju.inverse();
-    //Eigen::JacobiSVD<Eigen::MatrixXd > svd(-Ju, Eigen::ComputeThinU | Eigen::ComputeThinV);
-    //cmd_vel = -Juinv*(lambda*e + Jvx*v);
+        Jv = J.block<1,3>(0,0);
+        Jw = J.block<1,3>(0,3);
 
-    //double lambda_w = 1.0;
-    //cmd_vel(1) = - 1.0/Lx_r(5)*(lambda_w*e(1) + Lx_r(0)*v(0));
-    //vy = 0.0;
+        Jvx << Lx_l(0), Lx_r(0);
+        Ju << Lx_l(1), Lx_l(5),
+              Lx_r(1), Lx_r(5);//*/
 
-    cmd_vel(1) = -(lambda*e + Jv(0)*v(0))/Jw(2);
-    wz = cmd_vel(1);
-    vy = 0.0;
+        detJu = Ju.determinant();
+        Juinv = Ju.inverse();
 
-    /*vy = cmd_vel(0);
-    wz = cmd_vel(1);//*/
+        /*cmd_vel(1) = -(lambda*err + Jv(0)*v(0))/Jw(2);
+        wz = cmd_vel(1);
+        vy = 0.0;//*/
+
+        cmd_vel(0) = - (lambda*err + Jv(0)*v(0))/Jv(1);
+        vy = cmd_vel(0);
+        wz = 0.0;//*/
+    }
+    else{
+
+        // Multiply the interaction matrices by the twist matrix
+        L_l = L_l*W;
+        L_r = L_r*W;//*/
+
+        Lxl = L_l.row(0);
+        Lyl = L_l.row(1);
+        Lxr = L_r.row(0);
+        Lyr = L_r.row(1);
+
+        /*Jvx << Lxr(0) + Lxl(0),
+               Lyr(0) - Lyl(0);//*/
+        Jvx << Lyr(0) - Lyl(0),
+               Lxr(0) + Lxl(0);
+
+        /*Ju << Lxr(1) + Lxl(1), Lxr(5) + Lxr(5),
+              Lyr(1) - Lyl(1), Lyr(5) - Lyl(5);//*/
+        Ju << Lyr(1) - Lyl(1), Lyr(5) - Lyl(5),
+              Lxr(1) + Lxl(1), Lxr(5) + Lxr(5);
+
+        detJu = Ju.determinant();
+        Juinv = Ju.inverse();
+
+
+        cmd_vel = -Juinv*(lambda_d*e + Jvx*v);
+        vy = cmd_vel(0);
+        wz = cmd_vel(1);//*/
+
+    }
 
 
     velocityScaling();
-    //}
-    /*else{
-        vy = 0.0;
-        wz = 0.0;
-    }//*/
 
     if(record){
-        /*error_f << e(0,0) << ", "
-                << e(1,0) << "; " << endl;//*/
-        error_f << e << "; " << endl;
-
+        if(single_control_var){
+            error_f << err << "; " << endl;
+        }
+        else{
+            error_f << e(0,0) << ", "
+                    << e(1,0) << "; " << endl;//*/
+        }
         xl_f << xl << ", " << yl << "; " << endl;
         xr_f << xr << ", " << yr << "; " << endl;
         det_f << detJu << "; " << endl;
         vx_f << linear_vel << "; " << endl;
-        vy_f << cmd_vel(0) << ", " << vy << "; " << endl;
-        wz_f << cmd_vel(1) << ", " << wz << "; " << endl;
+        vy_f << cmd_vel(0) << ", " << vy << "; " << endl;//!!!! RICORDA DI INVERTIRE DI NUOVO GLI INDICI, QUESTA È UNA PROVA (DEVE ESSERE 0)
+        wz_f << cmd_vel(1) << ", " << wz << "; " << endl;//!!!! RICORDA DI INVERTIRE DI NUOVO GLI INDICI, QUESTA È UNA PROVA (DEVE ESSERE 1)
         Ju_f << Juinv(0,0) << ", " << Juinv(0,1) << ", " << Juinv(1,0) << ", " << Juinv(1,1) << ";" << endl;
         J_f << Jv(0) << ", " << Jw(2) << "; " << endl;
     }
 
-    cout << "vx: " << linear_vel << "\t vy: " << vy << "\t wz: " << wz << endl;
+    //cout << "vx: " << linear_vel << "\t vy: " << vy << "\t wz: " << wz << endl;
 
 }
 
@@ -1198,7 +1246,7 @@ void of_driving::velocityScaling(){
     double v_norm = sqrt(vx*vx + vy*vy);
 
     if( v_norm > max_v){
-        cout << "LINEAR VELOCITY SATURATED!!!" << endl;
+        //cout << "LINEAR VELOCITY SATURATED!!!" << endl;
         k1 = max_v/v_norm;
         vx *= k1;
         vy *= k1;
@@ -1206,7 +1254,7 @@ void of_driving::velocityScaling(){
     }
     double w_norm = abs(wz);
     if(w_norm > max_w){
-        cout << "ANGULAR VELOCITY SATURATED!!!" << endl;
+        //cout << "ANGULAR VELOCITY SATURATED!!!" << endl;
         k2 = max_w/w_norm;
         vx *= k2;
         vy *= k2;
