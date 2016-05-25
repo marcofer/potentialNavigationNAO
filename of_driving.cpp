@@ -73,6 +73,8 @@ of_driving::of_driving(){
 
     record = false;
 
+
+
 }
 
 of_driving::~of_driving(){
@@ -99,6 +101,7 @@ void of_driving::initFlows(bool save_video){
     result_field = Mat::zeros(img_height,img_width,CV_32FC2);
     potential_field = Mat::zeros(img_height,img_width,CV_32FC2);
     inverted_dp = Mat::zeros(img_height,img_width,CV_8UC1);
+    motImg = Mat::zeros(img_height,img_width,CV_32FC2);
 
     noFilt_of = Mat::zeros(img_height,img_width,CV_32FC2);
     noFilt_pf = Mat::zeros(img_height,img_width,CV_32FC2);
@@ -179,6 +182,8 @@ void of_driving::initFlows(bool save_video){
 
     eps_int = epsilon*100.0;
 
+    delta = 0.5;
+    delta_int = delta*100.0;
 
     switch(of_alg){
         case LK:
@@ -248,6 +253,7 @@ void of_driving::createWindowAndTracks(){
     createTrackbar("field weights",of_alg_name,&weight_int,10,NULL);//*/
     
     createTrackbar("area_ths",of_alg_name,&area_ths,500,NULL);
+    createTrackbar("delta*100",of_alg_name,&delta_int,500,NULL);
 
 }
 
@@ -322,8 +328,9 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
 	Rect rect_ransac(ROI_x,ROI_y,ROI_width,ROI_height);
 	Mat ROI_ransac = dominant_plane(rect_ransac);
 
-	epsilon = (double)eps_int/100.0;
-	alpha = (double)alpha_int/1000.0;
+    epsilon = (double)eps_int/100.0;
+    delta = (double)delta_int/100.0;
+    alpha = (double)alpha_int/1000.0;
 	pyr_scale = (double)pyr_scale10/10.0;
 	open_erode = (double)open_erode_int/10.0;
 	open_dilate = (double)open_dilate_int/10.0;
@@ -347,6 +354,8 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
     img.copyTo(GrayImg);
     prev_img.copyTo(GrayPrevImg);
 
+    //blur(GrayImg,GrayImg,Size(windows_size*2,windows_size*2));
+    //blur(GrayPrevImg,GrayPrevImg,Size(windows_size*2,windows_size*2));
 
 	GpuMat gpu_prevImg(GrayPrevImg);
 	GpuMat gpu_Img(GrayImg);
@@ -408,15 +417,14 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
         cout << "norm(diff): " << norm(optical_flow.at<Point2f>(img_height - 10,img_width/2) - planar_flow.at<Point2f>(img_height - 10,img_width/2)) << endl << endl;
     }//*/
 
+    /// --- 5. Extract dominant plane boundary
+    extractPlaneBoundaries();
 
-    /// --- 5a. Compute gradient vector field from dominant plane
+    /// --- 6a. Compute gradient vector field from dominant plane
     computeGradientVectorField();
 
-    /// --- 5b. Compute the obstacle centroids
+    /// --- 6b. Compute the obstacle centroids
     computeCentroids();
-
-    /// --- 6. Compute the desired planar flow, from the theta_d <--- NOT REQUIRED HERE
-    //computePotentialField();
 
     /// --- 7. Compute the control force as average of potential field
     computeControlForceOrientation(); 
@@ -625,6 +633,9 @@ void of_driving::computeOpticalFlowField(Mat& prevImg, Mat& img){
 
     optical_flow.copyTo(old_flow);//*/
 
+    // OPTIONALLY !!!!!!!!!
+    blur(optical_flow,optical_flow,Size(windows_size*2,windows_size*2));
+
 
 }
 
@@ -818,27 +829,169 @@ void of_driving::buildPlanarFlowAndDominantPlane(Mat& ROI_ransac){
 
 }
 
-void of_driving::computeCentroids(){
-    /*** main code of branch 1 on centroids ***/
-    //imshow("inverted plane",inverted_dp);
-    Mat drawing;
-    cvtColor(inverted_dp,drawing,CV_GRAY2BGR);
+void of_driving::extractPlaneBoundaries(){
     contours.clear();
     good_contours.clear();
+
+    //Find contours
+    cv::findContours(inverted_dp,contours,hierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
+
+    for (int i = 0 ; i < contours.size() ; i ++){
+        if(contourArea(contours[i]) > area_ths){
+            good_contours.push_back(contours[i]);
+        }
+    }
+
+    findGroundBoundaries();
+
+}
+
+void of_driving::findGroundBoundaries(){
+    ground_contours.clear();
+    ground_contours.resize(good_contours.size());
+
+    Eigen::MatrixXd vel(6,1);
+    Eigen::Vector2d pdot, pof;
+    Eigen::MatrixXd J(2,6);
+    vel << linear_vel, 0, 0, 0, 0, wz;
+
+    Mat b_of;
+    optical_flow.copyTo(b_of);
+    //blur(optical_flow,b_of,Size(windows_size*2,windows_size*2));
+
+    //buildMotionImage();
+
+    for (int i = 0 ; i < good_contours.size() ; i ++){
+        for (int j = 0 ; j < good_contours[i].size() ; j ++){
+
+            //Get current point
+            Point cv_p(good_contours[i][j]);
+
+            double x = cv_p.x;
+            double y = cv_p.y;
+
+            //Normalize the point wrt the principal point of the camera
+            double xn = x - principal_point.x;
+            double yn = y - principal_point.y;
+
+            //Get the corresponding optical flow vector
+            pof << b_of.at<Point2f>(Point2f(x,y)).x, b_of.at<Point2f>(Point2f(x,y)).y;
+
+            //Compute the feature motion based on the feature dynamics
+            J = buildInteractionMatrix(xn,yn);
+            J = J*W;
+            pdot = J*vel;
+
+            //Check for similarity
+            if((pdot - pof).norm() < delta){
+                ground_contours[i].push_back(cv_p);//<--- qui crasha
+            }
+            //ground_contours.push_back(temp);
+        }
+    }//*/
+
+    //Draw Contours
+    Mat pair = Mat::zeros( Size(img_width*2,img_height), CV_8UC3 );
+    Mat bound_img = pair(Rect(0,0,img_width,img_height));
+    Mat ground_img = pair(Rect(img_width,0,img_width,img_height));
+    Scalar red = Scalar(0,0,255);
+    Scalar green = Scalar(0,255,0);
+
+
+    //Print contours
+    //cout << "good_contours.size(): " << good_contours.size() << endl;
+    for(int i = 0 ; i < good_contours.size() ; i ++){
+        //cout << "\tlayer " << i << ", size: " << good_contours[i].size() << endl;
+        for (int j = 0 ; j < good_contours[i].size() ; j ++){
+            circle(bound_img,good_contours[i][j],2,red,2,CV_AA);
+        }
+    }
+
+    //Print contours
+    //cout << "ground_contours.size(): " << ground_contours.size() << endl;
+    for(int i = 0 ; i < ground_contours.size() ; i ++){
+        //cout << "\tlayer " << i << ", size: " << ground_contours[i].size() << endl;
+        for (int j = 0 ; j < ground_contours[i].size() ; j ++){
+            circle(ground_img,ground_contours[i][j],2,green,2,CV_AA);
+        }
+    }//*/
+
+
+    /*for (int i = 0 ; i < ground_contours.size() ; i ++){
+        drawContours(ground_img, ground_contours, i, green, 2, 8, noArray(), 0, Point() );
+        drawContours(bound_img, good_contours, i, red, 2, 8, noArray(), 0, Point() );
+    }//*/
+
+    /// Show in a window
+    namedWindow( "Contours", CV_WINDOW_AUTOSIZE );
+    imshow( "Contours", pair );
+
+
+}
+
+
+/*void of_driving::buildMotionImage(){
+
+    Eigen::MatrixXd J(2,6);
+    Eigen::Vector2d pp(principal_point.x, principal_point.y);
+    Eigen::Matrix<double,6,1> vel;
+    vel << linear_vel, 0, 0, 0, 0, wz;
+
+    for (int i = 0 ; i < img_height ; i ++){
+        Point2f* mot_ptr = motImg.ptr<Point2f>(i);
+        for (int j = 0 ; j < img_width ; j ++){
+            Eigen::Vector2d p(j,i);
+            p -= pp;
+            J = buildInteractionMatrix(p(0),p(1));
+            J = J*W;
+            Eigen::Vector2d p2 = J*vel;
+            mot_ptr[j] = Point2f(p2(0),p2(1));
+
+        }
+    }
+
+    Mat motion;
+    cvtColor(GrayImg,motion,CV_GRAY2BGR);
+
+    for (int i = 0 ; i < motion.rows ; i+= flowResolution*2){
+        const Point2f* mot_ptr = motImg.ptr<Point2f>(i);
+        for (int j = 0 ; j < motion.cols ; j += flowResolution*2){
+            cv::Point2f p(j,i);
+            cv::Point2f p2(p + mot_ptr[j]);
+            arrowedLine2(motion,p,p2,Scalar(0,0,255),0.1,8,0,0.1);
+        }
+    }
+
+    imshow("motion",motion);
+
+
+}//*/
+
+Eigen::MatrixXd of_driving::buildInteractionMatrix(double x, double y){
+
+    Eigen::MatrixXd J(2,6);
+
+    double hc = camera_height;
+    double gamma = camera_tilt;
+    double f = focal_length;
+    double Z = hc/cos(gamma + atan2(y,f));
+
+    J <<    - f/Z,     0, x/Z,       x*y/f, -(f + x*x/f),  y,
+                0,  -f/Z, y/Z, (f + y*y/f),       -x*y/f, -x;
+
+    return J;
+}
+
+void of_driving::computeCentroids(){
+    //Get Moments
+    vector < Moments > mu;
+
     centroids.clear();
     l_centroids.clear();
     r_centroids.clear();
 
-    //Find contours
-    cv::findContours(inverted_dp,contours,cannyHierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
-    //Get Moments
-    vector < Moments > mu;
-
-    for (int i = 0 ; i < contours.size() ; i ++){
-        if(contourArea(contours[i]) > area_ths){
-            mu.push_back(moments(contours[i]));
-            good_contours.push_back(contours[i]);
-        }
+    for (int i = 0 ; i < good_contours.size() ; i ++){
+        mu.push_back(moments(good_contours[i]));
     }
 
     //Get the mass centers
@@ -861,9 +1014,6 @@ void of_driving::computeCentroids(){
     int r_size = r_centroids.size();
     int l_size = l_centroids.size();
 
-    cout << "r_size: " << r_size << endl;
-    cout << "l_size: " << l_size << endl;
-
     if(r_size == 0){
     x_r = Point2f(img_width,prevx_r.y);
     }
@@ -882,18 +1032,6 @@ void of_driving::computeCentroids(){
         }
         x_l = x_l*(1.0/((float)l_size));
     }
-
-    //SHOW CENTROIDS
-    //Draw contours' centers
-    /*for (int i = 0 ; i < r_centroids.size() ; i ++){
-        circle(drawing,r_centroids[i],4,Scalar(0,0,255),-1,8,0);
-    }
-    for (int i = 0 ; i < l_centroids.size() ; i ++){
-        circle(drawing,l_centroids[i],4,Scalar(0,0,255),-1,8,0);
-    }
-    circle(drawing,x_r,4,Scalar(255,0,0),-1,8,0);
-    circle(drawing,x_l,4,Scalar(255,0,0),-1,8,0);
-    imshow("Centroids",drawing);//*/
 
     prevx_r = x_r;
     prevx_l = x_l;
@@ -1076,13 +1214,11 @@ void of_driving::computeRobotVelocities(){
     Eigen::Matrix<double,2,1> cmd_vel; //vy, wz
     Eigen::Matrix<double,2,1> Jvx;
     Eigen::Matrix<double,1,1> v;
-    Eigen::Matrix3d tskew;
-    Eigen::Matrix<double,6,6> W = Eigen::Matrix<double,6,6>::Zero() ;
     Eigen::Matrix<double,2,2> Ju;
     Eigen::Matrix<double,1,6> J;
     Eigen::Matrix<double,1,3> Jv,Jw;
     Eigen::Matrix<double,1,6> Lx_l, Lx_r;
-    Eigen::Matrix<double,2,6> L_l, L_r;
+    Eigen::Matrix<double,2,6> Lxy_l, Lxy_r;
     Eigen::Matrix<double,1,6> Lxl, Lxr, Lyl, Lyr;
     Point2f c_rn, c_ln;
     float lambda = 1.0;//2.5
@@ -1092,18 +1228,35 @@ void of_driving::computeRobotVelocities(){
     double detJu;
     Eigen::Matrix<double,2,2> Juinv;
 
-    bool single_control_var = false;
+    bool single_control_var = true;
 
+    //Extract normalized coordinates
     c_rn = (x_r - principal_point);
     c_ln = (x_l - principal_point);
+
 
     xl = c_ln.x;
     yl = c_ln.y;
     xr = c_rn.x;
     yr = c_rn.y;
 
+    //Build the interaction matrix
+    Lxy_l = buildInteractionMatrix(xl,yl);
+    Lxy_r = buildInteractionMatrix(xr,yr);
+
+    Lx_l = Lxy_l.row(0);
+    Lx_r = Lxy_r.row(0);
+
+    //Define the error
+    if(single_control_var){
+        err = xl + xr;
+    }
+    else{
+        e << yr - yl, xl + xr ;
+    }
+
     //Compute the desired depths for the centroids
-    Zl = hc/cos(gamma + atan2(yl,f));
+    /*Zl = hc/cos(gamma + atan2(yl,f));
     Zr = hc/cos(gamma + atan2(yr,f));
 
     if(single_control_var){
@@ -1126,14 +1279,14 @@ void of_driving::computeRobotVelocities(){
                     0, -f/Zl, yl/Zl, (f + yl*yl/f),       -xl*yl/f, -xl;
 
         L_r << - f/Zr,     0, xr/Zr,       xr*yr/f, -(f + xr*xr/f),  yr,
-                    0, -f/Zr, yr/Zr, (f + yr*yr/f),       -xr*yr/f, -xr;//*/
-    }
+                    0, -f/Zr, yr/Zr, (f + yr*yr/f),       -xr*yr/f, -xr;
+    }//*/
 
 
     // Assuming that the camera frame differs from the robot frame in just a translation along the vertical axis and a tilt angle,
     // write the corresponding transformation matrix (cameraR is the rotation matrix R_c_r, cameraT is translation vector t_c_r)
 
-    bool approx = false; //state if using the simplified approximated camera pose or the real one
+    /*bool approx = false; //state if using the simplified approximated camera pose or the real one
     Eigen::Matrix3d cR;
     Eigen::Matrix<double,3,1> cT;
     if(approx){
@@ -1142,17 +1295,17 @@ void of_driving::computeRobotVelocities(){
                     sin(gamma),  0, -cos(gamma);
 
         cT << 0, hc*sin(gamma), hc*cos(gamma);
-    }
+    }//*/
 
     // Write the translation vector as skew-symmetric matrix for the cross-product
-    tskew <<          0, -cameraT(2),  cameraT(1),
+    /*tskew <<          0, -cameraT(2),  cameraT(1),
              cameraT(2),           0, -cameraT(0),
             -cameraT(1),  cameraT(0),           0;
 
     // Build the twist matrix
     W.topLeftCorner(3,3) = cameraR;
     W.topRightCorner(3,3) = tskew*cameraR;
-    W.bottomRightCorner(3,3) = cameraR;
+    W.bottomRightCorner(3,3) = cameraR;//*/
 
     // Assume the linear forward velocity as constant
     v << linear_vel;
@@ -1168,31 +1321,20 @@ void of_driving::computeRobotVelocities(){
         Jv = J.block<1,3>(0,0);
         Jw = J.block<1,3>(0,3);
 
-        Jvx << Lx_l(0), Lx_r(0);
-        Ju << Lx_l(1), Lx_l(5),
-              Lx_r(1), Lx_r(5);//*/
-
-        detJu = Ju.determinant();
-        Juinv = Ju.inverse();
-
-        /*cmd_vel(1) = -(lambda*err + Jv(0)*v(0))/Jw(2);
+        cmd_vel(1) = -(lambda*err + Jv(0)*v(0))/Jw(2);
         wz = cmd_vel(1);
         vy = 0.0;//*/
-
-        cmd_vel(0) = - (lambda*err + Jv(0)*v(0))/Jv(1);
-        vy = cmd_vel(0);
-        wz = 0.0;//*/
     }
     else{
 
         // Multiply the interaction matrices by the twist matrix
-        L_l = L_l*W;
-        L_r = L_r*W;//*/
+        Lxy_l = Lxy_l*W;
+        Lxy_r = Lxy_r*W;//*/
 
-        Lxl = L_l.row(0);
-        Lyl = L_l.row(1);
-        Lxr = L_r.row(0);
-        Lyr = L_r.row(1);
+        Lxl = Lxy_l.row(0);
+        Lyl = Lxy_l.row(1);
+        Lxr = Lxy_r.row(0);
+        Lyr = Lxy_r.row(1);
 
         /*Jvx << Lxr(0) + Lxl(0),
                Lyr(0) - Lyl(0);//*/
@@ -1289,6 +1431,8 @@ void of_driving::computeFlowDirection(){
 
 void of_driving::set_cameraPose(std::vector<float> pose){
 
+    Eigen::Matrix3d tskew;
+
     //This is the matrix Trc expressing the camera frame (not optical) wrt to the robot frame
     cameraPose(0,0) = pose.at(0);
     cameraPose(0,1) = pose.at(1);
@@ -1318,6 +1462,16 @@ void of_driving::set_cameraPose(std::vector<float> pose){
 
     cameraR = Tor.topLeftCorner(3,3);
     cameraT = Tor.block<3,1>(0,3);
+
+    // Write the translation vector as skew-symmetric matrix for the cross-product
+    tskew <<          0, -cameraT(2),  cameraT(1),
+             cameraT(2),           0, -cameraT(0),
+            -cameraT(1),  cameraT(0),           0;
+
+    // Build the twist matrix
+    W.topLeftCorner(3,3) = cameraR;
+    W.topRightCorner(3,3) = tskew*cameraR;
+    W.bottomRightCorner(3,3) = cameraR;
 
 }
 

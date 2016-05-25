@@ -65,6 +65,7 @@ public:
     void set_cameraPose(std::vector<float>);
 
 
+
     //run function - Real time image processing algorithm
     void run(Mat& img, Mat& prev_img, bool, bool);
 
@@ -108,6 +109,7 @@ private:
     cv::Point2f principal_point;
     Eigen::Matrix3d K, Kinv, cameraR;
     Eigen::Matrix<double,3,1> cameraT;
+    Eigen::Matrix<double,6,6> W;
     Eigen::Matrix4d cameraPose;
     double vy, wz;
 
@@ -116,12 +118,16 @@ private:
         bool open_close;
 
     //Centroids variables
-    vector < vector < cv::Point > > contours, good_contours;
-    vector < Vec4i > cannyHierarchy;
+    vector < vector < cv::Point > > contours, good_contours, ground_contours;
+    vector < Vec4i > hierarchy;
     vector < Point2f > centroids, l_centroids, r_centroids;
     Point2f x_r, x_l;
     Point2f prevx_r, prevx_l;
     Point2f old_xr, old_xl;
+    double delta;
+    int delta_int;
+    Mat motImg;
+
 
 	Mat H;
 
@@ -283,6 +289,9 @@ private:
 	void estimateAffineCoefficients(bool,Mat&,Mat&,Rect&);
 	void buildPlanarFlowAndDominantPlane(Mat&);
 
+    void extractPlaneBoundaries();
+    void findGroundBoundaries();
+    //void buildMotionImage();
     void computeCentroids();
     void velocityScaling();
 
@@ -290,6 +299,7 @@ private:
 	void computePotentialField();
 	void computeControlForceOrientation();
 
+    Eigen::MatrixXd buildInteractionMatrix(double, double);
 
     void computeRobotVelocities();
     void computeFlowDirection();
