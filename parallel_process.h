@@ -51,6 +51,42 @@ class ParallelDominantPlaneBuild : public cv::ParallelLoopBody{
         virtual void operator()(const cv::Range& range) const;
 };
 
+class ParallelDominantPlaneFromMotion : public cv::ParallelLoopBody{
+
+    private:
+        int coreNum;
+        cv::Mat& dp;
+        cv::Mat& op;
+        cv::Mat& of;
+        cv::Mat& fd;
+        cv::Point2f ppoint;
+
+        double epsilon;
+        double Tc;
+        double cut_f;
+        double v;
+        double w;
+        double hc;
+        double f;
+        double gamma;
+
+        int dp_threshold;
+
+        Eigen::Matrix<double,6,6> W;
+
+
+    public:
+
+        ParallelDominantPlaneFromMotion(int ncores, cv::Mat& dp_, cv::Mat& op_, cv::Mat& of_, cv::Mat& fd_, cv::Point2f pp_, double eps, double tc, double cf,
+                                        double lin, double ang, double hc_, double f_, double gamma_,int thres, Eigen::Matrix<double,6,6> W_):
+                                                coreNum(ncores), dp(dp_), op(op_), of(of_), fd(fd_), ppoint(pp_), epsilon(eps), Tc(tc),
+                                                cut_f(cf), v(lin), w(ang), hc(hc_), f(f_), gamma(gamma_), dp_threshold(thres), W(W_){}
+
+        virtual void operator()(const cv::Range& range) const;
+
+};
+
+
 
 
 class ParallelGradientFieldBuild : public cv::ParallelLoopBody{

@@ -383,9 +383,13 @@ void potentialNavigationNAO::run(){
             //command NAO
             if((move_robot) || (manual)){
                 //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
+                drive.set_linearVel(vmax);
+                drive.set_angVel(wz);
                 motionProxy.move(v,vy,wz);//FRAME_ROBOT
             }
             else{
+                drive.set_linearVel(0.0);
+                drive.set_angVel(0.0);
                 motionProxy.stopMove();
             }
             double toc = getTickCount();

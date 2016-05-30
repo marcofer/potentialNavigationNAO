@@ -364,19 +364,26 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
 
 	/// ---  1. Compute the optical flow field u(x,y,t) (output: optical_flow matrix)
     computeOpticalFlowField(GrayPrevImg,GrayImg);
-    //computeOpticalFlowField(gpu_prevImg,gpu_Img);
 
-    //computeFlowDirection();
+    //buildMotionImage();
 
-	while(point_counter <= max_counter && k < iteration_num){
+    /*parallel_for_(Range(0,cores_num),ParallelDominantPlaneFromMotion(cores_num,dominant_plane,old_plane,optical_flow,motImg,
+                                                                     principal_point,epsilon,Tc,img_lowpass_freq,linear_vel,
+                                                                     wz,camera_height,focal_length,camera_tilt,dp_threshold,W));
+
+    cv::bitwise_not(dominant_plane,inverted_dp);
+
+    //*/
+
+    while(point_counter <= max_counter && k < iteration_num){
 
 
-        // --- 2. Compute affine coefficients by random selection of three points 
+        /// --- 2. Compute affine coefficients by random selection of three points
 		estimateAffineCoefficients(false,GrayPrevImg,ROI_ransac,rect_ransac);
 		
 
-		// --- 3-4. Estimate planar flow from affine coefficients and Match the computed optical flow and esitmated planar flow, so detect the dominant plane. If the dominant plane occupies
-        // less than half of the image, then go to step (2)
+        /// --- 3-4. Estimate planar flow from affine coefficients and Match the computed optical flow and esitmated planar flow, so detect the dominant plane. If the dominant plane occupies
+        /// less than half of the image, then go to step (2)
 		buildPlanarFlowAndDominantPlane(ROI_ransac);
 		
         
@@ -402,32 +409,20 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
     /// --- 2. Robust computation of affine coefficients with all the points belonging to the detected dominant plane 	
     estimateAffineCoefficients(true,GrayPrevImg,ROI_ransac,rect_ransac);//*/
 
-	/// --- 3. 
-
     /// --- 3-4. Estimate planar flow from affine coefficients and Match the computed optical flow and esitmated planar flow, so detect the dominant plane
     buildPlanarFlowAndDominantPlane(ROI_ransac);
-
-    /*cout << "optical_flow.at<Point2f>(img_height - 10,img_width/2): " << optical_flow.at<Point2f>(img_height - 10,img_width/2) << endl;
-    cout << "planar.at<Point2f>(img_height - 10,img_width/2): " << planar_flow.at<Point2f>(img_height - 10,img_width/2) << endl ;
-
-    if(norm(optical_flow.at<Point2f>(img_height - 10,img_width/2) - planar_flow.at<Point2f>(img_height - 10,img_width/2)) > 0.5){
-        cout << "!!!!!!!!!!!!!!!!!!norm(diff): " << norm(optical_flow.at<Point2f>(img_height - 10,img_width/2) - planar_flow.at<Point2f>(img_height - 10,img_width/2)) << endl << endl;
-    }
-    else{
-        cout << "norm(diff): " << norm(optical_flow.at<Point2f>(img_height - 10,img_width/2) - planar_flow.at<Point2f>(img_height - 10,img_width/2)) << endl << endl;
-    }//*/
 
     /// --- 5. Extract dominant plane boundary
     extractPlaneBoundaries();
 
     /// --- 6a. Compute gradient vector field from dominant plane
-    computeGradientVectorField();
+    //computeGradientVectorField();
 
     /// --- 6b. Compute the obstacle centroids
     computeCentroids();
 
     /// --- 7. Compute the control force as average of potential field
-    computeControlForceOrientation(); 
+    computeControlForceOrientation();
 
     /// --- 8. Compute the translational and rotational robot velocities
     computeRobotVelocities();
@@ -634,7 +629,7 @@ void of_driving::computeOpticalFlowField(Mat& prevImg, Mat& img){
     optical_flow.copyTo(old_flow);//*/
 
     // OPTIONALLY !!!!!!!!!
-    blur(optical_flow,optical_flow,Size(windows_size*2,windows_size*2));
+    //blur(optical_flow,optical_flow,Size(windows_size*2,windows_size*2));
 
 
 }
@@ -842,7 +837,7 @@ void of_driving::extractPlaneBoundaries(){
         }
     }
 
-    findGroundBoundaries();
+    //findGroundBoundaries();
 
 }
 
@@ -930,7 +925,7 @@ void of_driving::findGroundBoundaries(){
 }
 
 
-/*void of_driving::buildMotionImage(){
+void of_driving::buildMotionImage(){
 
     Eigen::MatrixXd J(2,6);
     Eigen::Vector2d pp(principal_point.x, principal_point.y);
@@ -943,7 +938,9 @@ void of_driving::findGroundBoundaries(){
             Eigen::Vector2d p(j,i);
             p -= pp;
             J = buildInteractionMatrix(p(0),p(1));
+
             J = J*W;
+
             Eigen::Vector2d p2 = J*vel;
             mot_ptr[j] = Point2f(p2(0),p2(1));
 

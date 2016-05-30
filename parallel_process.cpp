@@ -4,6 +4,77 @@
 using namespace std;
 using namespace cv;
 
+void ParallelDominantPlaneFromMotion::operator()(const cv::Range& range) const{
+
+    for(int k = range.start; k < range.end; k++)
+    {
+        cv::Mat dp_rect(dp,cv::Rect(0,dp.rows/coreNum*k,dp.cols,dp.rows/coreNum));
+        cv::Mat op_rect(op,cv::Rect(0,op.rows/coreNum*k,op.cols,op.rows/coreNum));
+        cv::Mat of_rect(of,cv::Rect(0,of.rows/coreNum*k,of.cols,of.rows/coreNum));
+        cv::Mat fd_rect(fd,cv::Rect(0,fd.rows/coreNum*k,fd.cols,of.rows/coreNum));
+
+        Eigen::Vector2d pp(ppoint.x,ppoint.y), p2;
+        Eigen::Matrix<double,2,6> J;
+        Eigen::Matrix<double,6,1> vel;
+        vel << v, 0, 0, 0, 0, w;
+
+        int rows = dp_rect.rows;
+        int cols = dp_rect.cols;
+
+
+        for (int i = 0 ; i < rows ; i ++){
+            unsigned char* dp_ptr = dp_rect.ptr<uchar>(i);
+            Point2f* of_ptr = of_rect.ptr<Point2f>(i);
+            Point2f* fd_ptr = fd_rect.ptr<Point2f>(i);
+            for (int j = 0 ; j < cols ; j ++){
+                Eigen::Vector2d p((double)j,(double)i + k*dp_rect.rows);
+                p -= pp;
+
+                double x = p(0);
+                double y = p(1);
+                double Z = hc/cos(gamma + atan2(y,f));
+
+
+                J <<    - f/Z,     0, x/Z,       x*y/f, -(f + x*x/f),  y,
+                            0,  -f/Z, y/Z, (f + y*y/f),       -x*y/f, -x;
+
+                J = J*W;
+
+                p2 = J*vel;
+
+                fd_ptr[j] = Point2f(p2(0),p2(1));
+
+                /*Point2f xdot(of_ptr[j]);
+                Point2f xhat(fd_ptr[j]);
+
+                if( norm(xdot - xhat) < epsilon ) {
+                    dp_ptr[j] = 255;
+                }
+                else{
+                    dp_ptr[j] = 0.0;
+                }//*/
+
+            }
+        }
+
+        /*for (int i = 0 ; i < rows ; i ++){
+            unsigned char* dp_ptr = dp_rect.ptr<uchar>(i);
+            unsigned char* op_ptr = op_rect.ptr<uchar>(i);
+            for (int j = 0 ; j < cols ; j ++){
+                    dp_ptr[j] = low_pass_filter(dp_ptr[j],op_ptr[j],Tc,1.0/(cut_f));
+            }
+        }
+
+        dp_rect.copyTo(op_rect);
+
+        double thresh = dp_threshold; //100
+        double maxVal = 255;
+        threshold(dp_rect,dp_rect,thresh,maxVal,THRESH_BINARY);//*/
+
+
+    }
+}
+
 
 void ParallelDominantPlaneBuild::operator()(const cv::Range& range) const{
      
@@ -398,4 +469,3 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
     }
 
 }
-

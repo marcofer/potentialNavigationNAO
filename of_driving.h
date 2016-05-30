@@ -60,7 +60,8 @@ public:
 
     inline void set_tilt(double tilt) {camera_tilt = tilt;}
     inline void set_cameraHeight(double h) {camera_height = h;}
-
+    inline void set_linearVel(double v) {linear_vel = v;}
+    inline void set_angVel(double w) {wz = w;}
 
     void set_cameraPose(std::vector<float>);
 
@@ -291,7 +292,7 @@ private:
 
     void extractPlaneBoundaries();
     void findGroundBoundaries();
-    //void buildMotionImage();
+    void buildMotionImage();
     void computeCentroids();
     void velocityScaling();
 
