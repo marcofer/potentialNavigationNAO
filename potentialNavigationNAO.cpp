@@ -134,7 +134,7 @@ void potentialNavigationNAO::init(){
     vmax = drive.get_linVelMax();
     wmax = drive.get_angVelMax();
 
-    full_path = "/home/ubu1204/Documents/Software/qi_work_tree/potentialNavigationNAO/plot";
+    full_path = "/home/ubu1204//Documents/Software/NAO/work_tree_qi/potentialNavigationNAO/plot";
 
     try{
         openFiles();

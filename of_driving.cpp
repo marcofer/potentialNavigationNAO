@@ -29,7 +29,7 @@ of_driving::of_driving(){
     open_dilate = 1.0;
     close_erode = 1.0;
     close_dilate = 1.0;
-    of_alg = 3;
+    of_alg = 0;
     of_scale = 1;
     RANSAC_imgPercent = 0.5;
     dp_threshold = 40;//40
@@ -829,7 +829,10 @@ void of_driving::extractPlaneBoundaries(){
     good_contours.clear();
 
     //Find contours
-    cv::findContours(inverted_dp,contours,hierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
+    Mat inv_dpROI = inverted_dp(Rect(0,0,img_width,img_height*0.5));
+    imshow("inv_dpROI",inv_dpROI);
+
+    cv::findContours(inv_dpROI,contours,hierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
 
     for (int i = 0 ; i < contours.size() ; i ++){
         if(contourArea(contours[i]) > area_ths){
