@@ -18,7 +18,8 @@ set(_srcs
     cJoystick.cpp
     of_driving.cpp
     parallel_process.cpp
-    main.cpp)
+    main.cpp
+    utils.cpp)
 
 # Create a executable named potentialNavigationNAO
 # with the source file: main.cpp
