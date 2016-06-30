@@ -3,10 +3,12 @@
 
 
 #include "utils.h"
+
 #include "parallel_process.h"
 
 #define ANGULAR_VEL_MAX 0.1//0.83
-#define LINEAR_VEL_MAX 0.04//0.0952
+#define LINEAR_VEL_MAX 0.06//0.0952
+
 
 using namespace std;
 using namespace cv;
@@ -22,6 +24,8 @@ public:
 	//Destructor
 	~of_driving();
 
+    AL::ALMotionProxy* motionPtr;
+    inline void set_ALMotionPtr(AL::ALMotionProxy* ptr){motionPtr = ptr;}
 	//Set the size of the image used by the image processing algorithm
 	void set_imgSize(int w, int h);
 
@@ -40,7 +44,6 @@ public:
     void set_cameraPose(std::vector<float>);
 
 
-
     //run function - Real time image processing algorithm
     void run(Mat& img, Mat& prev_img, bool, bool);
 
@@ -48,15 +51,17 @@ public:
 	//Print on the image he information about the current pan and tilt angles of the camera
 	void plotPanTiltInfo(Mat& img, float tilt_cmd, float pan_cmd);
 
-	//get functions
-	inline double get_steering() {return - steering;}
+    //get functions
+    inline double get_steering() {return - steering;}
 	inline double get_tilt() {return tilt_angle;}
 	inline double get_pan() {return pan_angle;}
     inline double get_linearVel() {return linear_vel;}
     inline double get_angularVel() {return angular_vel;}
-    inline double get_linVelMax() {return linear_vel;}
+    inline double get_linVelMax() {return linear_vel;}    
+    inline double get_Vx() {return vx;}
     inline double get_Vy() {return vy;}
     inline double get_Wz() {return wz;}
+    inline double get_u_pan() {return u_pan;}
     inline double get_angVelMax() {return max_w;}
     inline double get_throttle() {return ankle_angle;}
     inline double get_theta() {return theta;}
@@ -86,7 +91,10 @@ private:
     Eigen::Matrix<double,3,1> cameraT;
     Eigen::Matrix<double,6,6> W;
     Eigen::Matrix4d cameraPose;
-    double vy, wz;
+    double vx, vy, wz;
+    double pan_dot;
+    double u_pan, u_pan_old, real_pan;
+    std::vector<float> headYawFrame;
 
 	int area_ths;
 
@@ -254,10 +262,11 @@ private:
 	int of_scale;
 
     ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f, error_f, xl_f, xr_f, centr_w_f, R_f, vx_f, vy_f, wz_f, det_f, Ju_f,
-             J_f;
+             J_f, pan_f;
 
 
     /* Methods */
+
 
 	void computeOpticalFlowField(Mat&, Mat&);
 
@@ -277,6 +286,10 @@ private:
     Eigen::MatrixXd buildInteractionMatrix(double, double);
 
     void computeRobotVelocities();
+
+    void applyPanCmdonNAOqi();
+    double getRealPanFromNAOqi();
+
     void computeFlowDirection();
 
     Mat displayImages(Mat&);

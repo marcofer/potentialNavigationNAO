@@ -7,22 +7,13 @@
 // OpenCV includes
 #include <opencv2/opencv.hpp>
 
-
-// Aldebaran includes
-#include <alcommon/almodule.h>
-#include <alcommon/albroker.h>
-#include <alproxies/almotionproxy.h>
-#include <alproxies/alvideodeviceproxy.h>
-#include <alproxies/alvideorecorderproxy.h>
-#include <alerror/alerror.h>
-#include <alvision/alvisiondefinitions.h>
-#include <qi/os.hpp>
-
 // Joystick class include
 #include "cJoystick.h"
 
 // of_driving class include
 #include "of_driving.h"
+
+#include "utils.h"
 
 using namespace std;
 using namespace cv;
@@ -58,6 +49,7 @@ private:
     // ALModule variables
     // Aldebaran built-in modules
     ALMotionProxy motionProxy;
+    ALMotionProxy* motPtr;
     ALVideoDeviceProxy cameraProxy;
     void* recorderProxy;
 
@@ -70,6 +62,7 @@ private:
     Mat cameraOrientation, cameraOrientationT;
     Mat cameraPosition;
     std::vector<float> cameraFrame;
+    std::vector<float> headYawFrame;
 
     bool headset, firstKeyIgnored;
     string cameraName;
@@ -92,7 +85,7 @@ private:
 
     ofstream cycle_f, cameraRate_f;
 
-    double v, vy, vmax;
+    double v, vx, vy, vmax;
     double w, wz, wmax; //TODO: fix names (wz is used for centroids control law, w for potential)
     double x_f;
 
@@ -104,7 +97,7 @@ private:
     void printTiltInfo();
 
     short int catchState(char);
-    void getVelocityCommands();
+    void applyControlInputs();
     double current_imageTime, previous_imageTime;
     double curtime;
 

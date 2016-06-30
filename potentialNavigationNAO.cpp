@@ -8,24 +8,7 @@
 #include<sys/types.h>
 #include <fstream>
 
-#define LEFT_UD_AXIS 1
-#define RIGHT_LR_AXIS 2
-#define X_BUTTON 2
-#define SQUARE_BUTTON 3
-#define TRIANGLE_BUTTON 0
-#define CIRCLE_BUTTON 1
-#define START_BUTTON 9
-#define JOY_MAXVAL 32767
 
-
-#define TILT_JOINT "HeadPitch"
-#define PAN_JOINT "HeadYaw"
-
-#define MINPITCH -0.671951
-#define MAXPITCH 0.515047
-
-#define SAVE_VIDEO false
-#define FRAME_ROBOT 2
 
 
 potentialNavigationNAO::potentialNavigationNAO(
@@ -107,6 +90,10 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
     drive.set_imgSize(imgSize.width,imgSize.height);
     drive.initFlows(SAVE_VIDEO);
 
+    motPtr = new AL::ALMotionProxy;
+    *motPtr = motionProxy;
+    drive.set_ALMotionPtr(motPtr);
+
 
 }
 
@@ -134,7 +121,12 @@ void potentialNavigationNAO::init(){
     vmax = drive.get_linVelMax();
     wmax = drive.get_angVelMax();
 
-    full_path = "/home/ubu1204//Documents/Software/NAO/work_tree_qi/potentialNavigationNAO/plot";
+    //full_path = "/home/ubu1204//Documents/Software/NAO/qi_work_tree/potentialNavigationNAO/plot";
+    char curDirAndFile[1024];
+    getcwd(curDirAndFile, sizeof(curDirAndFile));
+    full_path = std::string(curDirAndFile);
+    full_path += "/plot";
+    std::cout << "full_path: " << full_path << std::endl;
 
     try{
         openFiles();
@@ -146,7 +138,7 @@ void potentialNavigationNAO::init(){
     gettimeofday(&start_tod,NULL);
     elapsed_tod = 0.0;
 
-    record = false;
+    record = true;
 }
 
 
@@ -169,6 +161,7 @@ void potentialNavigationNAO::chooseCamera(int camera_flag){
 
 void potentialNavigationNAO::cleanAllActivities(){
     delete joy;
+    delete motPtr;
 
     closeFiles();
 
@@ -255,6 +248,7 @@ void potentialNavigationNAO::setTiltHead(char key){
     motionProxy.setAngles(names,angles,fracSpeed);
 
     updateCameraPose();
+
     /*cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
     cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,true);
     camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
@@ -324,6 +318,7 @@ void potentialNavigationNAO::run(){
         }
         else{
             if(online){
+
                 // capture image from subscribed camera
                 ALimg = cameraProxy.getImageRemote(cameraName);
 
@@ -376,19 +371,21 @@ void potentialNavigationNAO::run(){
             }
 
 
-            getVelocityCommands();
+            applyControlInputs();
 
             //Get the Transform from ROBOT_FRAME to the Camera
+
 
             //command NAO
             if((move_robot) || (manual)){
                 //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
                 drive.set_linearVel(vmax);
                 drive.set_angVel(wz);
-                motionProxy.move(v,vy,wz);//FRAME_ROBOT
+                //motionProxy.move(v,vy,wz);//FRAME_ROBOT
+                motionProxy.move(vx,vy,wz);//FRAME_ROBOT
             }
             else{
-                drive.set_linearVel(0.0);
+                //drive.set_linearVel(0.0);
                 drive.set_angVel(0.0);
                 motionProxy.stopMove();
             }
@@ -428,7 +425,7 @@ short int potentialNavigationNAO::catchState(char key){
     return 1;
 }
 
-void potentialNavigationNAO::getVelocityCommands(){
+void potentialNavigationNAO::applyControlInputs(){
     //if manual then read joystick values
     if(manual){
         int res = joy->readEv(); //<--- don't print this value, or the joystick won't answer
@@ -446,16 +443,33 @@ void potentialNavigationNAO::getVelocityCommands(){
         }
     }
     else{
-        v = drive.get_linearVel(); //FRAME_ROBOT
+        //v = drive.get_linearVel(); //FRAME_ROBOT
+        vx = drive.get_Vx(); //FRME_ROBOT
         vy = drive.get_Vy(); //FRAME_ROBOT
-        wz = drive.get_Wz(); //FRAME_ROBOT
+        wz = drive.get_Wz(); //FRAME_ROBOT//*/
         //w = -drive.get_angularVel(); //FRAME_ROBOT
+
     }
 }
 
 void potentialNavigationNAO::updateCameraPose(){
     string cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
+    string HeadYawFrameName = PAN_JOINT;
     cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,true);
+    headYawFrame = motionProxy.getTransform(HeadYawFrameName,FRAME_ROBOT,true);
+
+    /*std::cout << "cameraFrame: " << std::endl;
+    std::cout << cameraFrame[0] << ", " << cameraFrame[1] << ", " << cameraFrame[2] << ", " << cameraFrame[3] << ", " << std::endl
+              << cameraFrame[4] << ", " << cameraFrame[5] << ", " << cameraFrame[6] << ", " << cameraFrame[7] << ", " << std::endl
+              << cameraFrame[8] << ", " << cameraFrame[9] << ", " << cameraFrame[10] << ", " << cameraFrame[11] << ", " << std::endl
+              << cameraFrame[12] << ", " << cameraFrame[13] << ", " << cameraFrame[14] << ", " << cameraFrame[15] << ", " << std::endl;
+    std::cout << "\nheadYawFrame: " << std::endl;
+    std::cout << headYawFrame[0] << ", " << headYawFrame[1] << ", " << headYawFrame[2] << ", " << headYawFrame[3] << ", " << std::endl
+              << headYawFrame[4] << ", " << headYawFrame[5] << ", " << headYawFrame[6] << ", " << headYawFrame[7] << ", " << std::endl
+              << headYawFrame[8] << ", " << headYawFrame[9] << ", " << headYawFrame[10] << ", " << headYawFrame[11] << ", " << std::endl
+              << headYawFrame[12] << ", " << headYawFrame[13] << ", " << headYawFrame[14] << ", " << headYawFrame[15] << ", " << std::endl << std::endl;//*/
+
+
     camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
     camera_tilt = M_PI/2.0 - camera_tilt; //should be always 1.2° (39.7°) for top (bottom camera)
     camera_height = cameraFrame.at(11); //should be always 0.45831m for bottom camera

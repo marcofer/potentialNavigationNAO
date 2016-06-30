@@ -40,7 +40,7 @@ void ParallelDominantPlaneFromMotion::operator()(const cv::Range& range) const{
 
                 J = J*W;
 
-                p2 = J*vel;
+                p2 = J*vel*Tc;
 
                 fd_ptr[j] = Point2f(p2(0),p2(1));
 
@@ -379,14 +379,28 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             pb.x = pb.x*dmax/pxmax;
             Vy.x = Vy.x*dmax/pxmax;
 
+            //circle
+            int c_radius = 20;
+            Point c_center(img.cols/8.0,img.rows/8.0);
+            Point pan_line(-c_radius*sin(pan),-c_radius*cos(pan));
+            Point real_pan_line(-c_radius*sin(real_pan),-c_radius*cos(real_pan));
+            circle(cf_img,c_center,c_radius,Scalar(255,0,0));
+            line(cf_img,c_center,c_center + pan_line,Scalar(255,255,0));
+            line(cf_img,c_center,c_center + Point(0,-c_radius),Scalar(0,255,255));
+            line(cf_img,c_center,c_center + real_pan_line,Scalar(0,0,255));
             //bar_length
             double bar_length = img.cols/2 - 10.0;
             double bar_height = 10.0;
 
             //v_bar
-            Point2f v1(1.0/2.0*img.cols,3.0/4.0*img.rows);
+            Point2f v1(1.0/2.0*img.cols,2.0/3.0*img.rows);
             Point2f v2 = v1 + Point2f(bar_length,bar_height);
             rectangle(cf_img,v1,v2,Scalar(100,100,100),2);
+
+            Point2f vy1(1.0/2.0*img.cols,2.0/3.0*img.rows + 2.0*bar_height);
+            Point2f vy2 = vy1 + Point2f(bar_length,bar_height);
+            rectangle(cf_img,vy1,vy2,Scalar(100,100,100),2);
+
 
             //w_bar
             const double angular_vel_max = wmax;
@@ -394,11 +408,14 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
             double w_value = wz * (bar_length/2) / angular_vel_max ;
             double v_value = (linear_vel)/linear_vel_max*(bar_length/2);
-            
+            double vy_value = (vy)/linear_vel_max*(bar_length/2);
+
             double w_red = abs(w_value)/(bar_length/2)*255.0 ;
             double w_green = 255.0 - w_red;            
             double v_red = abs(v_value)/(bar_length/2)*255.0 ;
-            double v_green = 255.0 - v_red;            
+            double v_green = 255.0 - v_red;
+            double vy_red = abs(vy_value)/(bar_length/2)*255.0 ;
+            double vy_green = 255.0 - vy_red;
 
             Point2f w1(1.0/2.0*img.cols,3.0/4.0*img.rows + 2.0*bar_height);
             Point2f w2 = w1 + Point2f(bar_length,bar_height);
@@ -412,13 +429,13 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             double font_scale2 = 0.6;
 
             text_str = "";
-            text_str = "v = ";
+            text_str = "vx = ";
             v_size = getTextSize(text_str,1,font_scale,1,0);
             putText(cf_img, text_str,Point(10,v2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);
            
             text_str = "";
             convert.str(""); convert.clear();
-            convert << setprecision(4) << linear_vel_max;
+            convert << setprecision(4) << linear_vel;
             text_str = convert.str();
             vvalue_size = getTextSize(text_str,1,font_scale,1,0);
             putText(cf_img, text_str,Point(v_size.width + 10,v2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);
@@ -427,6 +444,25 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             text_str = "[m/s]";
             ms_size = getTextSize(text_str,1,font_scale2,1,0);
             putText(cf_img, text_str,Point(img.cols/2-ms_size.width -10,v2.y),1,font_scale2,Scalar(255,255,255),1,CV_AA);
+
+
+            text_str = "";
+            text_str = "vy = ";
+            v_size = getTextSize(text_str,1,font_scale,1,0);
+            putText(cf_img, text_str,Point(10,vy2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);
+
+            text_str = "";
+            convert.str(""); convert.clear();
+            convert << setprecision(4) << vy;
+            text_str = convert.str();
+            vvalue_size = getTextSize(text_str,1,font_scale,1,0);
+            putText(cf_img, text_str,Point(v_size.width + 10,vy2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);
+
+            text_str = "";
+            text_str = "[m/s]";
+            ms_size = getTextSize(text_str,1,font_scale2,1,0);
+            putText(cf_img, text_str,Point(img.cols/2-ms_size.width -10,vy2.y),1,font_scale2,Scalar(255,255,255),1,CV_AA);
+
 
             text_str = "";
             text_str = "w = ";
@@ -448,12 +484,13 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
             line(cf_img,Point2f((w1+w2)*0.5),Point2f((w1+w2)*0.5) + Point2f(w_value,0), Scalar(0,w_green,w_red),5.0,2,0);
             line(cf_img,Point2f((v1+v2)*0.5),Point2f((v1+v2)*0.5) + Point2f(v_value,0), Scalar(0,v_green,v_red),5.0,2,0);
+            line(cf_img,Point2f((vy1+vy2)*0.5),Point2f((vy1+vy2)*0.5) + Point2f(vy_value,0), Scalar(0,v_green,v_red),5.0,2,0);
             circle(cf_img,Point2f((w1+w2)*0.5),3,Scalar(0,0,255),2);
             circle(cf_img,Point2f((v1+v2)*0.5),3,Scalar(0,0,255),2);
 
 
             // Navigation Vector visual information
-            arrowedLine2(cf_img,center,center + y*50,Scalar(255,0,0),3.0,8,0,0.1);
+            //arrowedLine2(cf_img,center,center + y*50,Scalar(255,0,0),3.0,8,0,0.1);
             //arrowedLine2(cf_img,center,center + pb,Scalar(0,255,0),3.0,1,0,0.1);
             //arrowedLine2(cf_img,center,center + Vy,Scalar(255,255,0),3.0,1,0,0.1);
 

@@ -20,7 +20,7 @@ of_driving::of_driving(){
     grad_scale = 1.0;
     windows_size = 13.0;//44.0;//13.0;
     maxLayer = 2;
-    epsilon = 0.7;//0.7;//0.5//0.4;//0.8;
+    epsilon = 1.0;//0.7;//0.5//0.4;//0.8;
     flowResolution = 4;
     iteration_num = 10;
     of_iterations = 3;//3;
@@ -32,7 +32,7 @@ of_driving::of_driving(){
     of_alg = 3;
     of_scale = 1;
     RANSAC_imgPercent = 0.5;
-    dp_threshold = 40;//40
+    dp_threshold = 20;//40
     wheelbase = 2.06;
 
     open_erode_int = open_erode*10.0;
@@ -46,8 +46,12 @@ of_driving::of_driving(){
 
 
 	angular_vel = 0.0;
+    vx = 0.0;
     vy = 0.0;
     wz = 0.0;
+    pan_dot = 0.0;
+    u_pan = 0.0;
+    u_pan_old = 0.0;
 
 	steering = 0.0;
 	ankle_angle = 0.0;
@@ -72,6 +76,7 @@ of_driving::of_driving(){
 	cores_num = sysconf( _SC_NPROCESSORS_ONLN );
 
     record = false;
+
 
 
 
@@ -414,6 +419,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
 
     /// --- 5. Extract dominant plane boundary
     extractPlaneBoundaries();
+    //findGroundBoundaries();
 
     /// --- 6a. Compute gradient vector field from dominant plane
     //computeGradientVectorField();
@@ -433,7 +439,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
 
 	/*** MULTI-THREADED DISPLAY ***/
     parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,prev_img,optical_flow,planar_flow,dominant_plane,smoothed_plane,
-                                                   result_field,p_bar,linear_vel,angular_vel,total,rect_ransac, theta, max_v, max_w, vy, wz,
+                                                   result_field,p_bar,vx,angular_vel,total,rect_ransac, u_pan, real_pan, max_v, max_w, vy, wz,
                                                    l_centroids,r_centroids,x_l,x_r));
     if(save_video){
         record_total.write(total);
@@ -830,7 +836,7 @@ void of_driving::extractPlaneBoundaries(){
 
     //Find contours
     Mat inv_dpROI = inverted_dp(Rect(0,0,img_width,img_height*0.5));
-    imshow("inv_dpROI",inv_dpROI);
+    //imshow("inv_dpROI",inv_dpROI);
 
     cv::findContours(inv_dpROI,contours,hierarchy,CV_RETR_TREE,CV_CHAIN_APPROX_SIMPLE, Point(0,0));
 
@@ -1154,12 +1160,12 @@ void of_driving::computeControlForceOrientation(){
 	pbar.x = p_bar(0);
 	pbar.y = p_bar(1);
 
+    /*if(record){
+        nofilt_barFile << noFilt_p.x << ", " << noFilt_p.y << "; " << endl;
+        filt_barFile << pbar.x << ", " << pbar.y << "; " << endl;
+    }//*/
 
-    nofilt_barFile << noFilt_p.x << ", " << noFilt_p.y << "; " << endl;
-    filt_barFile << pbar.x << ", " << pbar.y << "; " << endl;
-
-
-	Point2f y(0,-1);
+    Point2f y(0,-1);
 
     if(norm(pbar) > 5/*5//*/){
 		theta = pbar.dot(y);
@@ -1174,8 +1180,8 @@ void of_driving::computeControlForceOrientation(){
 		theta = 0.0;
 	}
 
-    if(record)
-        theta_f << theta << "; " << endl;
+    /*if(record)
+        theta_f << theta << "; " << endl;//*/
 
     //theta = low_pass_filter(theta,theta_old,Tc,1.0/ctrl_lowpass_freq);
     //cout << "theta: " << theta*180.0/M_PI << endl;
@@ -1189,8 +1195,8 @@ void of_driving::computeRobotVelocities(){
     double R = max_w*sin(theta);
 	angular_vel = R ;
 
-    if(record)
-        angularVel_f << angular_vel << "; " << endl;
+    /*if(record)
+        angularVel_f << angular_vel << "; " << endl;//*/
 
     if(ankle_angle != -1){
         steering = wheelbase * R/linear_vel;
@@ -1214,6 +1220,7 @@ void of_driving::computeRobotVelocities(){
     Eigen::Matrix<double,2,1> cmd_vel; //vy, wz
     Eigen::Matrix<double,2,1> Jvx;
     Eigen::Matrix<double,1,1> v;
+    Eigen::Matrix<double,6,1> v6;
     Eigen::Matrix<double,2,2> Ju;
     Eigen::Matrix<double,1,6> J;
     Eigen::Matrix<double,1,3> Jv,Jw;
@@ -1221,7 +1228,11 @@ void of_driving::computeRobotVelocities(){
     Eigen::Matrix<double,2,6> Lxy_l, Lxy_r;
     Eigen::Matrix<double,1,6> Lxl, Lxr, Lyl, Lyr;
     Point2f c_rn, c_ln;
-    float lambda = 1.0;//2.5
+
+
+    float lambda = 2.5;//2.5
+    float lambda_w  = 0.1;
+
     Eigen::Matrix2d lambda_d;
     lambda_d << 1.0, 0.0,
               0.0, 0.1;
@@ -1308,8 +1319,10 @@ void of_driving::computeRobotVelocities(){
     W.bottomRightCorner(3,3) = cameraR;//*/
 
     // Assume the linear forward velocity as constant
-    v << linear_vel;
 
+
+    v << linear_vel;
+    //v3 << vx, vy, 0, 0, 0, wz;
 
     if(single_control_var){
 
@@ -1321,7 +1334,30 @@ void of_driving::computeRobotVelocities(){
         Jv = J.block<1,3>(0,0);
         Jw = J.block<1,3>(0,3);
 
-        cmd_vel(1) = -(lambda*err + Jv(0)*v(0))/Jw(2);
+        pan_dot = - (lambda*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - wz;
+        u_pan = u_pan_old + pan_dot*Tc;
+
+        applyPanCmdonNAOqi();
+        real_pan = getRealPanFromNAOqi();
+
+        vx = linear_vel*cos(real_pan);
+        vy = linear_vel*sin(real_pan);
+        wz = lambda_w*(real_pan); // !!! Non deve essere u_pan, ma l'angolo di pan misurato dagli encoder, devi correggere questa riga!!!
+
+        if(record){
+            pan_f << u_pan << ", " << real_pan << "; " << std::endl;
+        }
+
+        /*std::cout << "u_pan: " << u_pan << std::endl;
+        std::cout << "real_pan: " << real_pan << std::endl;
+        std::cout << "vx: " << vx << std::endl;
+        std::cout << "vy: " << vy << std::endl;
+        std::cout << "wz: " << wz << std::endl;//*/
+
+        u_pan_old = u_pan;
+
+        //// THIS IS THE WORKING CONTROL LAW
+        /*cmd_vel(1) = -(lambda*err + Jv(0)*v(0))/Jw(2);
         wz = cmd_vel(1);
         vy = 0.0;//*/
     }
@@ -1357,7 +1393,7 @@ void of_driving::computeRobotVelocities(){
     }
 
 
-    velocityScaling();
+    //velocityScaling();
 
     if(record){
         if(single_control_var){
@@ -1370,14 +1406,47 @@ void of_driving::computeRobotVelocities(){
         xl_f << xl << ", " << yl << "; " << endl;
         xr_f << xr << ", " << yr << "; " << endl;
         det_f << detJu << "; " << endl;
-        vx_f << linear_vel << "; " << endl;
-        vy_f << cmd_vel(0) << ", " << vy << "; " << endl;//!!!! RICORDA DI INVERTIRE DI NUOVO GLI INDICI, QUESTA È UNA PROVA (DEVE ESSERE 0)
-        wz_f << cmd_vel(1) << ", " << wz << "; " << endl;//!!!! RICORDA DI INVERTIRE DI NUOVO GLI INDICI, QUESTA È UNA PROVA (DEVE ESSERE 1)
+        //vx_f << linear_vel << "; " << endl;
+        //vy_f << cmd_vel(0) << ", " << vy << "; " << endl;//!!!! RICORDA DI INVERTIRE DI NUOVO GLI INDICI, QUESTA È UNA PROVA (DEVE ESSERE 0)
+        //wz_f << cmd_vel(1) << ", " << wz << "; " << endl;//!!!! RICORDA DI INVERTIRE DI NUOVO GLI INDICI, QUESTA È UNA PROVA (DEVE ESSERE 1)
+
+        vx_f << vx << "; " << endl;
+        vy_f << vy << "; " << endl;
+        wz_f << wz << "; " << endl;
+
         Ju_f << Juinv(0,0) << ", " << Juinv(0,1) << ", " << Juinv(1,0) << ", " << Juinv(1,1) << ";" << endl;
         J_f << Jv(0) << ", " << Jw(2) << "; " << endl;
     }
 
     //cout << "vx: " << linear_vel << "\t vy: " << vy << "\t wz: " << wz << endl;
+
+}
+
+void of_driving::applyPanCmdonNAOqi(){
+
+    headYawFrame.clear();
+    u_pan = (u_pan < MAXYAW) ? ( (u_pan > MINYAW) ? (u_pan) : (MINYAW) ) : (MAXYAW) ;
+
+    AL::ALValue pan_name = AL::ALValue::array(PAN_JOINT);
+    AL::ALValue pan_value = AL::ALValue::array(u_pan);
+    double fracSpeed = 0.2;
+    motionPtr->setAngles(pan_name,pan_value,fracSpeed);
+
+}
+
+
+double of_driving::getRealPanFromNAOqi(){
+
+    std::vector<float> headYawFrame;
+    headYawFrame = motionPtr->getTransform("HeadYaw",FRAME_ROBOT,true);
+
+    /*std::cout << "\nheadYawFrame: " << std::endl;
+    std::cout << headYawFrame[0] << ", " << headYawFrame[1] << ", " << headYawFrame[2] << ", " << headYawFrame[3] << ", " << std::endl
+              << headYawFrame[4] << ", " << headYawFrame[5] << ", " << headYawFrame[6] << ", " << headYawFrame[7] << ", " << std::endl
+              << headYawFrame[8] << ", " << headYawFrame[9] << ", " << headYawFrame[10] << ", " << headYawFrame[11] << ", " << std::endl
+              << headYawFrame[12] << ", " << headYawFrame[13] << ", " << headYawFrame[14] << ", " << headYawFrame[15] << ", " << std::endl << std::endl;//*/
+
+    return real_pan = atan2(headYawFrame[4],headYawFrame[0]);
 
 }
 
@@ -1606,14 +1675,15 @@ string type2str(int type) {
 
 
 void of_driving::openFiles(const string full_path){
-    nofilt_barFile.open((full_path + "nofiltp.txt").c_str(),ios::app);
-    filt_barFile.open((full_path + "filtp.txt").c_str(),ios::app);
-    theta_f.open((full_path + "theta.txt").c_str(),ios::app);
-    angularVel_f.open((full_path + "angularVel.txt").c_str(),ios::app);
+    //nofilt_barFile.open((full_path + "nofiltp.txt").c_str(),ios::app);
+    //filt_barFile.open((full_path + "filtp.txt").c_str(),ios::app);
+    //theta_f.open((full_path + "theta.txt").c_str(),ios::app);
+    pan_f.open((full_path + "pan.txt").c_str(),ios::app);
+    //angularVel_f.open((full_path + "angularVel.txt").c_str(),ios::app);
     error_f.open((full_path + "centroids_error.txt").c_str(),ios::app);
     xl_f.open((full_path + "xl.txt").c_str(),ios::app);
     xr_f.open((full_path + "xr.txt").c_str(),ios::app);
-    R_f.open((full_path + "R.txt").c_str(),ios::app);
+    //R_f.open((full_path + "R.txt").c_str(),ios::app);
     vx_f.open((full_path + "vx.txt").c_str(),ios::app);
     vy_f.open((full_path + "vy.txt").c_str(),ios::app);
     wz_f.open((full_path + "wz.txt").c_str(),ios::app);
@@ -1624,14 +1694,15 @@ void of_driving::openFiles(const string full_path){
 }
 
 void of_driving::closeFiles(){
-    nofilt_barFile.close();
-    filt_barFile.close();
-    theta_f.close();
-    angularVel_f.close();
+    //nofilt_barFile.close();
+    //filt_barFile.close();
+    //theta_f.close();
+    pan_f.close();
+    //angularVel_f.close();
     error_f.close();
     xl_f.close();
     xr_f.close();
-    R_f.close();
+    //R_f.close();
     vx_f.close();
     vy_f.close();
     wz_f.close();
@@ -1663,3 +1734,4 @@ void of_driving::computePotentialField(){
 	}//*/
 
 }
+/**************************************************************/
