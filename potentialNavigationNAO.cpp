@@ -444,6 +444,7 @@ void potentialNavigationNAO::applyControlInputs(){
     }
     else{
         //v = drive.get_linearVel(); //FRAME_ROBOT
+
         vx = drive.get_Vx(); //FRME_ROBOT
         vy = drive.get_Vy(); //FRAME_ROBOT
         wz = drive.get_Wz(); //FRAME_ROBOT//*/

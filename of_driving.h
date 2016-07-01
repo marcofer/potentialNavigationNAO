@@ -40,7 +40,7 @@ public:
     inline void set_cameraHeight(double h) {camera_height = h;}
     inline void set_linearVel(double v) {linear_vel = v;}
     inline void set_angVel(double w) {wz = w;}
-
+    inline void set_realPan(double pan){real_pan = pan;}
     void set_cameraPose(std::vector<float>);
 
 
@@ -66,6 +66,10 @@ public:
     inline double get_throttle() {return ankle_angle;}
     inline double get_theta() {return theta;}
     inline Matx21f get_NavVec() {return p_bar;}
+
+
+    void applyPanCmdonNAOqi();
+    double getRealPanFromNAOqi();
 
     void createWindowAndTracks();
 	//the control variable: steering velocity (or angular velocity?)
@@ -287,8 +291,6 @@ private:
 
     void computeRobotVelocities();
 
-    void applyPanCmdonNAOqi();
-    double getRealPanFromNAOqi();
 
     void computeFlowDirection();
 

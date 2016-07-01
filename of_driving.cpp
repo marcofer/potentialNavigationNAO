@@ -427,8 +427,8 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec){
     /// --- 6b. Compute the obstacle centroids
     computeCentroids();
 
-    /// --- 7. Compute the control force as average of potential field
-    computeControlForceOrientation();
+    //// --- 7. Compute the control force as average of potential field
+    //computeControlForceOrientation();
 
     /// --- 8. Compute the translational and rotational robot velocities
     computeRobotVelocities();
@@ -1229,17 +1229,21 @@ void of_driving::computeRobotVelocities(){
     Eigen::Matrix<double,1,6> Lxl, Lxr, Lyl, Lyr;
     Point2f c_rn, c_ln;
 
+    Eigen::Matrix2d A;
+    Eigen::Matrix<double,2,1> B;
 
     float lambda = 2.5;//2.5
-    float lambda_w  = 0.1;
+    float lambda_w  = 0.3;
 
     Eigen::Matrix2d lambda_d;
-    lambda_d << 1.0, 0.0,
-              0.0, 0.1;
+    lambda_d << 2.5, 0.0,
+                0.0, 0.3;
+
+
     double detJu;
     Eigen::Matrix<double,2,2> Juinv;
 
-    bool single_control_var = true;
+    bool single_control_var = false;
 
     //Extract normalized coordinates
     c_rn = (x_r - principal_point);
@@ -1259,11 +1263,13 @@ void of_driving::computeRobotVelocities(){
     Lx_r = Lxy_r.row(0);
 
     //Define the error
+    double THETA_DES = 0.0;
     if(single_control_var){
         err = xl + xr;
     }
     else{
-        e << yr - yl, xl + xr ;
+       // e << yr - yl, xl + xr ;
+        e << xr + xl , THETA_DES - real_pan;
     }
 
     //Compute the desired depths for the centroids
@@ -1364,31 +1370,40 @@ void of_driving::computeRobotVelocities(){
     else{
 
         // Multiply the interaction matrices by the twist matrix
-        Lxy_l = Lxy_l*W;
-        Lxy_r = Lxy_r*W;//*/
+        Lx_l = Lx_l*W;
+        Lx_r = Lx_r*W;//*/
+        J = Lx_l + Lx_r;
 
-        Lxl = Lxy_l.row(0);
-        Lyl = Lxy_l.row(1);
-        Lxr = Lxy_r.row(0);
-        Lyr = Lxy_r.row(1);
+        Jv = J.block<1,3>(0,0);
+        Jw = J.block<1,3>(0,3);
 
-        /*Jvx << Lxr(0) + Lxl(0),
-               Lyr(0) - Lyl(0);//*/
-        Jvx << Lyr(0) - Lyl(0),
-               Lxr(0) + Lxl(0);
+        A << Jw(2), Jw(2),
+                 1,     0;
 
-        /*Ju << Lxr(1) + Lxl(1), Lxr(5) + Lxr(5),
-              Lyr(1) - Lyl(1), Lyr(5) - Lyl(5);//*/
-        Ju << Lyr(1) - Lyl(1), Lyr(5) - Lyl(5),
-              Lxr(1) + Lxl(1), Lxr(5) + Lxr(5);
-
-        detJu = Ju.determinant();
-        Juinv = Ju.inverse();
+        B << Jv(0)*cos(real_pan) + Jv(1)*sin(real_pan), 0;
 
 
-        cmd_vel = -Juinv*(lambda_d*e + Jvx*v);
-        vy = cmd_vel(0);
-        wz = cmd_vel(1);//*/
+        theta = THETA_DES;
+        // cmd_vel = [wz; qp_dot]
+        cmd_vel = - A.inverse()*(lambda_d*e + B*linear_vel);
+
+        wz = cmd_vel(0);
+        pan_dot = cmd_vel(1);
+
+        u_pan = u_pan_old + pan_dot*Tc;
+        u_pan_old = u_pan;
+
+        //theta = theta_old + wc*Tc;
+        theta_old = theta;
+
+        applyPanCmdonNAOqi();
+        real_pan = getRealPanFromNAOqi();
+        vx = linear_vel*cos(real_pan);
+        vy = linear_vel*sin(real_pan);
+
+        if(record){
+            pan_f << u_pan << ", " << real_pan << "; " << std::endl;
+        }
 
     }
 
@@ -1429,7 +1444,7 @@ void of_driving::applyPanCmdonNAOqi(){
 
     AL::ALValue pan_name = AL::ALValue::array(PAN_JOINT);
     AL::ALValue pan_value = AL::ALValue::array(u_pan);
-    double fracSpeed = 0.2;
+    double fracSpeed = 1.0; //0.2
     motionPtr->setAngles(pan_name,pan_value,fracSpeed);
 
 }
@@ -1677,7 +1692,7 @@ string type2str(int type) {
 void of_driving::openFiles(const string full_path){
     //nofilt_barFile.open((full_path + "nofiltp.txt").c_str(),ios::app);
     //filt_barFile.open((full_path + "filtp.txt").c_str(),ios::app);
-    //theta_f.open((full_path + "theta.txt").c_str(),ios::app);
+    theta_f.open((full_path + "theta.txt").c_str(),ios::app);
     pan_f.open((full_path + "pan.txt").c_str(),ios::app);
     //angularVel_f.open((full_path + "angularVel.txt").c_str(),ios::app);
     error_f.open((full_path + "centroids_error.txt").c_str(),ios::app);
@@ -1696,7 +1711,7 @@ void of_driving::openFiles(const string full_path){
 void of_driving::closeFiles(){
     //nofilt_barFile.close();
     //filt_barFile.close();
-    //theta_f.close();
+    theta_f.close();
     pan_f.close();
     //angularVel_f.close();
     error_f.close();
