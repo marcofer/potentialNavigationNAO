@@ -66,8 +66,13 @@ private:
 
     bool headset, firstKeyIgnored;
     string cameraName;
-    Mat OCVimage;
+    Mat OCVimage, workingImage;
     ALValue ALimg, config;
+
+    double ROI_x;
+    double ROI_y;
+    double ROI_width;
+    double ROI_height;
 
     //needed structures
     Size imgSize;

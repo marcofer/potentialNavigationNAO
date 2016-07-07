@@ -282,7 +282,9 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
         if(k == 0){
             Mat u_img, gImg;
             //cvtColor(img,gImg,CV_BGR2GRAY);
-            img.copyTo(gImg);
+
+            //img.copyTo(gImg);
+            gImg = img.clone();
 
             cvtColor(gImg,u_img,CV_GRAY2BGR);
 
@@ -301,7 +303,10 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
         if(k == 1){
             Mat p_img, gImg;
             //cvtColor(img,gImg,CV_BGR2GRAY);
-            img.copyTo(gImg);
+            //img.copyTo(gImg);
+            gImg = img.clone();
+
+
             cvtColor(gImg,p_img,CV_GRAY2BGR);
 
             for (int i = 0 ; i < img.rows ; i+= flowResolution*2){
@@ -348,7 +353,10 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             //SHOW CENTROIDS
             //Draw contours' centers
             Mat centroid_img;
-            dp.copyTo(centroid_img);
+            //dp.copyTo(centroid_img);
+            centroid_img = dp.clone();
+
+
             bitwise_not(centroid_img,centroid_img);
             cvtColor(centroid_img,centroid_img,CV_GRAY2BGR);
 
@@ -360,13 +368,27 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             }
             circle(centroid_img,xr,4,Scalar(0,0,255),-1,8,0);
             circle(centroid_img,xl,4,Scalar(0,0,0255),-1,8,0);
-            centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
 
+            Scalar green = Scalar(0,255,0);
+
+
+            //Print contours
+            //cout << "good_contours.size(): " << good_contours.size() << endl;
+            for(int i = 0 ; i < good_contours.size() ; i ++){
+                //cout << "\tlayer " << i << ", size: " << good_contours[i].size() << endl;
+                for (int j = 0 ; j < good_contours[i].size() ; j ++){
+                    circle(centroid_img,good_contours[i][j],2,green,2,CV_AA);
+                }
+            }
+
+            centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
         }        
 
         if(k == 5){
             Mat cf_img;
-            img.copyTo(cf_img);
+            //img.copyTo(cf_img);
+            cf_img = img.clone();
+
             cvtColor(cf_img,cf_img,CV_GRAY2BGR);
 
             double dmax = 100.0;

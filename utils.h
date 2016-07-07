@@ -28,6 +28,8 @@
 #include <alvision/alvisiondefinitions.h>
 #include <qi/os.hpp>
 
+#define VREP_SIM true
+
 #define LEFT_UD_AXIS 1
 #define RIGHT_LR_AXIS 2
 #define X_BUTTON 2
@@ -45,8 +47,8 @@
 #define MAXPITCH 0.515047
 //#define MINYAW -2.0856685
 //#define MAXYAW 2.0856685
-#define MINYAW -1.59/2.0
-#define MAXYAW 1.59/2.0
+#define MINYAW -1.59//-1.59/2.0
+#define MAXYAW 1.59//1.59/2.0
 
 #define SAVE_VIDEO false
 #define FRAME_ROBOT 2
@@ -64,3 +66,4 @@ string type2str(int);
 void callbackButton(int,void*);
 
 
+vector<Point> contoursConvexHull( vector<vector<Point> >  );

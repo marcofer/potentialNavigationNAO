@@ -27,7 +27,7 @@ public:
     AL::ALMotionProxy* motionPtr;
     inline void set_ALMotionPtr(AL::ALMotionProxy* ptr){motionPtr = ptr;}
 	//Set the size of the image used by the image processing algorithm
-	void set_imgSize(int w, int h);
+    void set_imgSize(int w, int h, int roi_x, int roi_y);
 
 	//initialization of the sampling time
 	inline void setTc(double T_c) {Tc = T_c;}
@@ -45,7 +45,7 @@ public:
 
 
     //run function - Real time image processing algorithm
-    void run(Mat& img, Mat& prev_img, bool, bool);
+    void run(Mat& img, Mat& prev_img, bool, bool, bool);
 
 	void setRectHeight(int rect_cmd);
 	//Print on the image he information about the current pan and tilt angles of the camera
@@ -68,7 +68,7 @@ public:
     inline Matx21f get_NavVec() {return p_bar;}
 
 
-    void applyPanCmdonNAOqi();
+    void applyPanCmdonNAOqi(bool);
     double getRealPanFromNAOqi();
 
     void createWindowAndTracks();
@@ -137,6 +137,7 @@ private:
 	Mat image;
 	//Image size
 	int img_height, img_width;
+    int real_roix, real_roiy;
 
 	//Pair of images
 	Mat GrayImg, GrayPrevImg;
@@ -289,7 +290,7 @@ private:
 
     Eigen::MatrixXd buildInteractionMatrix(double, double);
 
-    void computeRobotVelocities();
+    void computeRobotVelocities(bool);
 
 
     void computeFlowDirection();

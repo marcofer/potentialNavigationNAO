@@ -46,13 +46,14 @@ void potentialNavigationNAO::getVideoPath(const string &vp){
     cout << "Video path correctly acquired: " << video_path << endl;
 }
 
+
 void potentialNavigationNAO::setCaptureMode(const bool& onoff){
     online = onoff;
     cout << "Is the algorithm running online? " << ((online) ? ("YES") : ("NO")) << endl;
 
     if(online){
         // Choose NAO camera
-        camera_flag = 1 ;//1: bottom - 0: top
+        camera_flag = 0 ;//1: bottom - 0: top
         chooseCamera(camera_flag);
 
         // Call getImageRemote just once before the main loop to obtain NAOimage characteristics
@@ -61,10 +62,14 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
         current_imageTime = (int)ALimg[4]          // second
                             + (int)ALimg[5] * 1e-6;  // usec to seconds
         previous_imageTime = current_imageTime;
-        imgSize = Size((int)ALimg[0],(int)ALimg[1]);
 
-        OCVimage.create(imgSize.height,imgSize.width,CV_8UC1);
-        OCVimage.data = (uchar*)ALimg[6].GetBinary();
+        //imgSize = Size((int)ALimg[0],(int)ALimg[1]);
+        //OCVimage.create(imgSize.height,imgSize.width,CV_8UC1);
+        //OCVimage.data = (uchar*)ALimg[6].GetBinary();
+
+        workingImage.create((int)ALimg[1],(int)ALimg[0],CV_8UC1);
+        workingImage.data = (uchar*)ALimg[6].GetBinary();
+
     }
     else{
 
@@ -74,20 +79,32 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
             cout << "ERROR:Input video not found." << endl;
             std::exit(1);
         }
-        vc >> OCVimage;
-        resize(OCVimage,OCVimage,cv::Size(320,240));
-        cvtColor(OCVimage,OCVimage,CV_BGR2GRAY);
-        imgSize = Size(OCVimage.size());
+
+        vc >> workingImage;
+        resize(workingImage,workingImage,cv::Size(320,240));
+        cvtColor(workingImage,workingImage,CV_BGR2GRAY);
+
     }
+
+    ROI_x = 0.0;
+    ROI_y = workingImage.rows/2;
+    ROI_width = workingImage.cols - ROI_x;
+    ROI_height = workingImage.rows - ROI_y;
+
+    OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
+    imgSize = OCVimage.size();
 
     //img = Mat::zeros(imgSize,CV_8UC1);
     //prev_img = Mat::zeros(imgSize,CV_8UC1);
-    OCVimage.copyTo(img);
-    OCVimage.copyTo(prev_img);
+
+    //OCVimage.copyTo(img);
+    //OCVimage.copyTo(prev_img);
+    img = OCVimage.clone();
+    prev_img = OCVimage.clone();
 
 
     // of_driving object
-    drive.set_imgSize(imgSize.width,imgSize.height);
+    drive.set_imgSize(imgSize.width,imgSize.height, ROI_x, ROI_y);
     drive.initFlows(SAVE_VIDEO);
 
     motPtr = new AL::ALMotionProxy;
@@ -199,6 +216,8 @@ void potentialNavigationNAO::setTiltHead(char key){
     // Capture image from subscribed camera
     if(online){
         ALimg = cameraProxy.getImageRemote(cameraName);
+        OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
+
     }
     printTiltInfo();
 
@@ -306,7 +325,7 @@ void potentialNavigationNAO::run(){
 
     while(true){
 
-        key = cv::waitKey(1);
+        key = cv::waitKey(30);
 
         //Catch keyboard input to select the mode operation (<Manual>/<Autonomous + Stop/Go>)
         if(catchState(key)==-1)
@@ -321,6 +340,10 @@ void potentialNavigationNAO::run(){
 
                 // capture image from subscribed camera
                 ALimg = cameraProxy.getImageRemote(cameraName);
+                OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
+                if(VREP_SIM){
+                    flip(OCVimage,OCVimage,1);
+                }
 
                 /// compute camera framerate
                 current_imageTime = (int)ALimg[4]          // second
@@ -344,18 +367,28 @@ void potentialNavigationNAO::run(){
                   vc.set(CV_CAP_PROP_POS_FRAMES,0);
                 }
 
-                vc >> OCVimage;
-                resize(OCVimage,OCVimage,cv::Size(320,240));
-                cvtColor(OCVimage,OCVimage,CV_BGR2GRAY);
+                vc >> workingImage;
+                resize(workingImage,workingImage,cv::Size(320,240));
+                cvtColor(workingImage,workingImage,CV_BGR2GRAY);
+                OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
+                if(VREP_SIM){
+                    flip(OCVimage,OCVimage,1);
+                }
 
             }
 
             double tic = getTickCount();
 
             // update working images
-            img.copyTo(prev_img);
-            OCVimage.copyTo(img);
+            //img.copyTo(prev_img);
+            //OCVimage.copyTo(img);
 
+            prev_img = img.clone();
+            img = OCVimage.clone();
+
+            if(VREP_SIM){
+                flip(OCVimage,OCVimage,1);
+            }
             //make the algorithm run
 
             //Update needed variables for the current step
@@ -363,7 +396,7 @@ void potentialNavigationNAO::run(){
             updateCameraPose();
 
             try{
-                drive.run(img,prev_img,SAVE_VIDEO,record);
+                drive.run(img,prev_img,SAVE_VIDEO,record,move_robot);
             }
             catch(...){
                 cerr << "Problem in drive.run. " << endl;
@@ -457,9 +490,9 @@ void potentialNavigationNAO::updateCameraPose(){
     string cameraFrameName = (camera_flag) ? ("CameraBottom") : ("CameraTop");
     string HeadYawFrameName = PAN_JOINT;
     cameraFrame = motionProxy.getTransform(cameraFrameName,FRAME_ROBOT,true);
-    headYawFrame = motionProxy.getTransform(HeadYawFrameName,FRAME_ROBOT,true);
+    /*headYawFrame = motionProxy.getTransform(HeadYawFrameName,FRAME_ROBOT,false);
 
-    /*std::cout << "cameraFrame: " << std::endl;
+    std::cout << "cameraFrame: " << std::endl;
     std::cout << cameraFrame[0] << ", " << cameraFrame[1] << ", " << cameraFrame[2] << ", " << cameraFrame[3] << ", " << std::endl
               << cameraFrame[4] << ", " << cameraFrame[5] << ", " << cameraFrame[6] << ", " << cameraFrame[7] << ", " << std::endl
               << cameraFrame[8] << ", " << cameraFrame[9] << ", " << cameraFrame[10] << ", " << cameraFrame[11] << ", " << std::endl
@@ -493,7 +526,8 @@ void potentialNavigationNAO::updateTcAndLowPass(){
     loop_time = (now - curtime)/getTickFrequency();
     curtime = now;
 
-    //cout << "[LABROB] Loop rate:    " << 1.0/loop_time << "Hz" << endl;
+    std::cout << "Loop time: " << loop_time << std::endl;
+    cout << "[LABROB] Loop rate:    " << 1.0/loop_time << "Hz" << endl;
 
     cycle_f << 1.0/loop_time << "; " << endl;
 
@@ -506,7 +540,7 @@ void potentialNavigationNAO::updateTcAndLowPass(){
 
 
     //drive.setTc(0.04);//25Hz
-    drive.setTc(1.0/19.0);
+    drive.setTc(1.0/25.0);
     drive.setImgLowPassFrequency(1.0);
     drive.setBarLowPassFrequency(1.0);
 
@@ -524,7 +558,9 @@ void potentialNavigationNAO::printTiltInfo(){
     Size t_size, value_size;
     double font_scale = 0.9;
     Mat infoImg;
-    OCVimage.copyTo(infoImg);
+    //OCVimage.copyTo(infoImg);
+    infoImg = OCVimage.clone();
+
 
     text_str = "";
     text_str = "TILT [rad]= ";

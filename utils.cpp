@@ -78,3 +78,14 @@ void getFlowField(const Mat& u, const Mat& v, Mat& flowField)
 
 }
 
+vector<Point> contoursConvexHull( vector<vector<Point> > contours )
+{
+    vector<Point> result;
+    vector<Point> pts;
+    for ( size_t i = 0; i< contours.size(); i++)
+        for ( size_t j = 0; j< contours[i].size(); j++)
+            pts.push_back(contours[i][j]);
+    convexHull( pts, result );
+    return result;
+}
+
