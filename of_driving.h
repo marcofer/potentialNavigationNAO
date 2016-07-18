@@ -36,6 +36,9 @@ public:
     inline double getImgLowPassFrequency(){return img_lowpass_freq;}
     inline double getBarLowPassFrequency(){return bar_lowpass_freq;}
 
+    inline bool get_headYawRegulation() {return headYawRegulation;}
+    inline void set_headYawRegulation(bool var) {headYawRegulation = var;}
+
     inline void set_tilt(double tilt) {camera_tilt = tilt;}
     inline void set_cameraHeight(double h) {camera_height = h;}
     inline void set_linearVel(double v) {linear_vel = v;}
@@ -45,7 +48,7 @@ public:
 
 
     //run function - Real time image processing algorithm
-    void run(Mat& img, Mat& prev_img, bool, bool, bool);
+    void run(Mat& img, Mat& prev_img, bool, bool, bool, bool);
 
 	void setRectHeight(int rect_cmd);
 	//Print on the image he information about the current pan and tilt angles of the camera
@@ -68,7 +71,7 @@ public:
     inline Matx21f get_NavVec() {return p_bar;}
 
 
-    void applyPanCmdonNAOqi(bool);
+    void applyPanCmdonNAOqi(bool*, char*);
     double getRealPanFromNAOqi();
 
     void createWindowAndTracks();
@@ -89,6 +92,8 @@ private:
     double camera_height;
 
     bool record;
+    bool headYawRegulation;
+
 
     cv::Point2f principal_point;
     Eigen::Matrix3d K, Kinv, cameraR;
@@ -105,7 +110,8 @@ private:
         bool open_close;
 
     //Centroids variables
-    vector < vector < cv::Point > > contours, good_contours, ground_contours;
+    vector < vector < cv::Point > > contours, good_contours, ground_contours, ConvexHullPoints;
+    //vector<Point> ConvexHullPoints;
     vector < Vec4i > hierarchy;
     vector < Point2f > centroids, l_centroids, r_centroids;
     Point2f x_r, x_l;
@@ -113,8 +119,12 @@ private:
     Point2f old_xr, old_xl;
     double delta;
     int delta_int;
+    int xrmin, xrmax;
+    double theta_des;
     Mat motImg;
 
+
+    struct timeval start_t, end_t;
 
 	Mat H;
 
@@ -290,7 +300,7 @@ private:
 
     Eigen::MatrixXd buildInteractionMatrix(double, double);
 
-    void computeRobotVelocities(bool);
+    void computeRobotVelocities(bool, bool);
 
 
     void computeFlowDirection();

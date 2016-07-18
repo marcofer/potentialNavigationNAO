@@ -165,12 +165,18 @@ class ParallelDisplayImages : public cv::ParallelLoopBody {
 
         std::vector < std::vector < cv::Point > > good_contours;
 
+        int xmin;
+        int xmax;
+
+        double theta_des;
+
 
 	public:
         ParallelDisplayImages(int cores, int flow_res, cv::Mat img_,cv::Mat of_,cv::Mat pf_,cv::Mat dp_,cv::Mat sp_, cv::Mat gf_,cv::Matx21f p_bar_, double lv, double w,cv::Mat& total_, cv::Rect roi, double pan_, double real_pan_,
-                              double lin, double ang, double vy_, double wz_, std::vector < cv::Point2f > lc_, std::vector < cv::Point2f > rc_, cv::Point2f xl_, cv::Point2f xr_, std::vector < std::vector < cv::Point > > gc)
+                              double lin, double ang, double vy_, double wz_, std::vector < cv::Point2f > lc_, std::vector < cv::Point2f > rc_, cv::Point2f xl_, cv::Point2f xr_, std::vector < std::vector < cv::Point > > gc,
+                              int xmin_, int xmax_, double td)
             : coreNum(cores), flowResolution(flow_res), img(img_), of(of_), pf(pf_), dp(dp_), sp(sp_), gf(gf_), p_bar(p_bar_), linear_vel(lv), angular_vel(w), total(total_), dpROI(roi), pan(pan_), real_pan(real_pan_), vmax(lin), wmax(ang), vy(vy_),
-              wz(wz_), lc(lc_), rc(rc_), xl(xl_), xr(xr_), good_contours(gc){}
+              wz(wz_), lc(lc_), rc(rc_), xl(xl_), xr(xr_), good_contours(gc), xmin(xmin_), xmax(xmax_), theta_des(td){}
 		virtual void operator()(const cv::Range& range) const;
 
 

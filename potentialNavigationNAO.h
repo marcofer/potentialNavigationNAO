@@ -38,6 +38,8 @@ private:
 
     bool record;
 
+    bool changeRefTheta;
+
     //online structures
     string pip;
     int pport;

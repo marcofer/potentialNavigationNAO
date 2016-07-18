@@ -9,8 +9,6 @@
 #include <fstream>
 
 
-
-
 potentialNavigationNAO::potentialNavigationNAO(
     boost::shared_ptr<AL::ALBroker> broker, const string& name)
       : AL::ALModule(broker, name)
@@ -86,6 +84,7 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
 
     }
 
+
     ROI_x = 0.0;
     ROI_y = workingImage.rows/2;
     ROI_width = workingImage.cols - ROI_x;
@@ -110,7 +109,6 @@ void potentialNavigationNAO::setCaptureMode(const bool& onoff){
     motPtr = new AL::ALMotionProxy;
     *motPtr = motionProxy;
     drive.set_ALMotionPtr(motPtr);
-
 
 }
 
@@ -142,7 +140,7 @@ void potentialNavigationNAO::init(){
     char curDirAndFile[1024];
     getcwd(curDirAndFile, sizeof(curDirAndFile));
     full_path = std::string(curDirAndFile);
-    full_path += "/plot";
+    full_path += "/potentialNavigationNAO/plot";
     std::cout << "full_path: " << full_path << std::endl;
 
     try{
@@ -156,6 +154,8 @@ void potentialNavigationNAO::init(){
     elapsed_tod = 0.0;
 
     record = true;
+
+    changeRefTheta = false;
 }
 
 
@@ -251,13 +251,12 @@ void potentialNavigationNAO::setTiltHead(char key){
         drive.set_cameraHeight(camera_height);
         drive.set_cameraPose(cameraFrame);//*/
 
-
-
         break;
     default:
         dtilt = 0;
         break;
     }
+
     updateTilt(dtilt);
 
     AL::ALValue names = AL::ALValue::array(PAN_JOINT,TILT_JOINT);
@@ -277,8 +276,6 @@ void potentialNavigationNAO::setTiltHead(char key){
     drive.set_tilt(camera_tilt);
     drive.set_cameraHeight(camera_height);
     drive.set_cameraPose(cameraFrame);//*/
-
-
 
 }
 
@@ -323,9 +320,15 @@ void potentialNavigationNAO::run(){
         cv::namedWindow("Phantom image",WINDOW_AUTOSIZE);
     }
 
+    double tic = getTickCount();
+
+    std::thread regulateHeadYaw(&of_driving::applyPanCmdonNAOqi, &drive, &move_robot, &key);
+
     while(true){
 
-        key = cv::waitKey(30);
+        //motionProxy.move(-0.05,0.6,0.1);
+
+        key = cv::waitKey(1);
 
         //Catch keyboard input to select the mode operation (<Manual>/<Autonomous + Stop/Go>)
         if(catchState(key)==-1)
@@ -340,10 +343,13 @@ void potentialNavigationNAO::run(){
 
                 // capture image from subscribed camera
                 ALimg = cameraProxy.getImageRemote(cameraName);
-                OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
+                const unsigned char* ptr = static_cast<const unsigned char*>(ALimg[6].GetBinary());
+                workingImage.data = (uchar*)ptr;
+
                 if(VREP_SIM){
-                    flip(OCVimage,OCVimage,1);
+                    flip(workingImage,workingImage,1);
                 }
+                OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
 
                 /// compute camera framerate
                 current_imageTime = (int)ALimg[4]          // second
@@ -351,12 +357,8 @@ void potentialNavigationNAO::run(){
 
                 camera_rate = 1.0/( current_imageTime - previous_imageTime);
 
-                //cout << std::fixed << "\n[LABROB] camera frame rate:  " << camera_rate << " Hz" << endl;
-                /*cout << std::fixed << "[LABROB] current_imageTime:  " << current_imageTime << endl;
-                cout << std::fixed << "[LABROB] previous_imageTime:  " << previous_imageTime << endl;//*/
-
                 previous_imageTime = current_imageTime;
-                cameraRate_f << camera_rate << ";" << endl;
+                cameraRate_f << camera_rate << ";" << endl;//*/
             }
             else{
 
@@ -370,66 +372,79 @@ void potentialNavigationNAO::run(){
                 vc >> workingImage;
                 resize(workingImage,workingImage,cv::Size(320,240));
                 cvtColor(workingImage,workingImage,CV_BGR2GRAY);
-                OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
                 if(VREP_SIM){
-                    flip(OCVimage,OCVimage,1);
+                    flip(workingImage,workingImage,1);
+                }
+                OCVimage = workingImage(Rect(ROI_x,ROI_y,ROI_width,ROI_height));
+
+            }
+
+
+            /*if( online && (current_imageTime - previous_imageTime) >= 1e-4){
+
+
+                camera_rate = 1.0/(current_imageTime - previous_imageTime);
+                std::cout << "camera_rate: " << camera_rate << std::endl;
+                previous_imageTime = current_imageTime;
+                cameraRate_f << camera_rate << ";" << endl;//*/
+
+
+                // update working images
+                prev_img = img.clone();
+                img = OCVimage.clone();
+                //img.copyTo(prev_img);
+                //OCVimage.copyTo(img);
+
+
+                //Update needed variables for the current step
+                updateTcAndLowPass();
+                updateCameraPose();
+
+                //make the algorithm run
+                try{
+                    drive.run(img,prev_img,SAVE_VIDEO,record,move_robot,changeRefTheta);
+                }
+                catch(...){
+                    cerr << "Problem in drive.run. " << endl;
+                    std::exit(1);
                 }
 
-            }
+                applyControlInputs(); // here wz is updated
 
-            double tic = getTickCount();
+                //command NAO
+                if((move_robot) || (manual)){
+                    //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
+                    drive.set_linearVel(vmax);
+                    drive.set_angVel(wz);
+                    //motionProxy.move(v,vy,wz);//FRAME_ROBOT
+                    motionProxy.move(vx,vy,wz);//FRAME_ROBOT
 
-            // update working images
-            //img.copyTo(prev_img);
-            //OCVimage.copyTo(img);
-
-            prev_img = img.clone();
-            img = OCVimage.clone();
-
-            if(VREP_SIM){
-                flip(OCVimage,OCVimage,1);
-            }
-            //make the algorithm run
-
-            //Update needed variables for the current step
-            updateTcAndLowPass();
-            updateCameraPose();
-
-            try{
-                drive.run(img,prev_img,SAVE_VIDEO,record,move_robot);
-            }
-            catch(...){
-                cerr << "Problem in drive.run. " << endl;
-                std::exit(1);
-            }
+                    //motionProxy.move(0.0,0.0,0.5);
+                }
+                else{
+                    //drive.set_linearVel(0.0);
+                    drive.set_angVel(0.0);
+                    motionProxy.stopMove();
+                }
+                double toc = getTickCount();
+                double tictoc = (toc - tic)/getTickFrequency();
 
 
-            applyControlInputs();
+                tic = toc;
 
-            //Get the Transform from ROBOT_FRAME to the Camera
+                if(tictoc < 0.033){
+                    sleep(0.033 - tictoc);
+                }
 
 
-            //command NAO
-            if((move_robot) || (manual)){
-                //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
-                drive.set_linearVel(vmax);
-                drive.set_angVel(wz);
-                //motionProxy.move(v,vy,wz);//FRAME_ROBOT
-                motionProxy.move(vx,vy,wz);//FRAME_ROBOT
-            }
-            else{
-                //drive.set_linearVel(0.0);
-                drive.set_angVel(0.0);
-                motionProxy.stopMove();
-            }
-            double toc = getTickCount();
-            double tictoc = (toc - tic)/getTickFrequency();
-            //cout << "tictoc: " << tictoc << endl;
-        //}//*/
-        }
+                //cout << "tictoc: " << tictoc << endl;//*/
+            //}
+        }//*/
 
     }
 
+    //drive.set_headYawRegulation(true);
+    regulateHeadYaw.join();
     cleanAllActivities();
 
 }
@@ -454,6 +469,9 @@ short int potentialNavigationNAO::catchState(char key){
         w = 0.0;
         cout << ((manual) ? ("MANUAL CONTROL") : ("AUTONOMOUS CONTROL")) << endl ;
 
+    }
+    else if(key=='c'){
+        changeRefTheta = true;
     }
     return 1;
 }
@@ -527,7 +545,7 @@ void potentialNavigationNAO::updateTcAndLowPass(){
     curtime = now;
 
     std::cout << "Loop time: " << loop_time << std::endl;
-    cout << "[LABROB] Loop rate:    " << 1.0/loop_time << "Hz" << endl;
+    cout << "Loop rate:    " << 1.0/loop_time << "Hz" << endl;
 
     cycle_f << 1.0/loop_time << "; " << endl;
 

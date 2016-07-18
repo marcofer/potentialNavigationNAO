@@ -331,64 +331,12 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
         }        
 
         if(k == 3){
-            Mat sp_img;
+            /*Mat sp_img;
             cvtColor(sp,sp_img,CV_GRAY2BGR);
-            sp_img.copyTo(total(Rect(0,img.rows,img.cols,img.rows)));
-        }       
-
-        if(k == 4){
-            /*Mat gradient_img;
-            cvtColor(sp,gradient_img,CV_GRAY2BGR);
-
-            for (int i = 0 ; i < img.rows ; i+= flowResolution*2){
-                const Point2f* gf_ptr = gf.ptr<Point2f>(i);
-                for (int j = 0 ; j < img.cols ; j += flowResolution*2){
-                    cv::Point2f p(j,i);
-                    cv::Point2f p2(p + gf_ptr[j]*0.1);
-                    arrowedLine2(gradient_img,p,p2,Scalar(0,255,0),0.1,8,0,0.1);
-                }
-            }
-            gradient_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
-
-            //SHOW CENTROIDS
-            //Draw contours' centers
-            Mat centroid_img;
-            //dp.copyTo(centroid_img);
-            centroid_img = dp.clone();
-
-
-            bitwise_not(centroid_img,centroid_img);
-            cvtColor(centroid_img,centroid_img,CV_GRAY2BGR);
-
-            for (int i = 0 ; i < rc.size() ; i ++){
-                circle(centroid_img,rc[i],4,Scalar(255,0,0),-1,8,0);
-            }
-            for (int i = 0 ; i < lc.size() ; i ++){
-                circle(centroid_img,lc[i],4,Scalar(255,0,0),-1,8,0);
-            }
-            circle(centroid_img,xr,4,Scalar(0,0,255),-1,8,0);
-            circle(centroid_img,xl,4,Scalar(0,0,0255),-1,8,0);
-
-            Scalar green = Scalar(0,255,0);
-
-
-            //Print contours
-            //cout << "good_contours.size(): " << good_contours.size() << endl;
-            for(int i = 0 ; i < good_contours.size() ; i ++){
-                //cout << "\tlayer " << i << ", size: " << good_contours[i].size() << endl;
-                for (int j = 0 ; j < good_contours[i].size() ; j ++){
-                    circle(centroid_img,good_contours[i][j],2,green,2,CV_AA);
-                }
-            }
-
-            centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
-        }        
-
-        if(k == 5){
+            sp_img.copyTo(total(Rect(0,img.rows,img.cols,img.rows)));//*/
             Mat cf_img;
             //img.copyTo(cf_img);
-            cf_img = img.clone();
-
+            cf_img = Mat::zeros(img.size(),CV_8UC1);
             cvtColor(cf_img,cf_img,CV_GRAY2BGR);
 
             double dmax = 100.0;
@@ -401,25 +349,35 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             pb.x = pb.x*dmax/pxmax;
             Vy.x = Vy.x*dmax/pxmax;
 
-            //circle
+            //circle 1
             int c_radius = 20;
-            Point c_center(img.cols/8.0,img.rows/8.0);
+            Point c_center(img.cols/4.0,img.rows/4.0);
             Point pan_line(-c_radius*sin(pan),-c_radius*cos(pan));
             Point real_pan_line(-c_radius*sin(real_pan),-c_radius*cos(real_pan));
             circle(cf_img,c_center,c_radius,Scalar(255,0,0));
             line(cf_img,c_center,c_center + pan_line,Scalar(255,255,0));
-            line(cf_img,c_center,c_center + Point(0,-c_radius),Scalar(0,255,255));
+            //line(cf_img,c_center,c_center + Point(0,-c_radius),Scalar(0,255,255));
             line(cf_img,c_center,c_center + real_pan_line,Scalar(0,0,255));
+
+
+            //circle 2
+            Point c_center2(3.0*img.cols/4.0,img.rows/4.0);
+            Point theta_des_line(-c_radius*sin(theta_des),-c_radius*cos(theta_des));
+            circle(cf_img,c_center2,c_radius,Scalar(255,0,0));
+            line(cf_img,c_center2,c_center2 + theta_des_line,Scalar(255,255,0));
+            //line(cf_img,c_center2,c_center2 + Point(0,-c_radius),Scalar(0,255,255));
+
+
             //bar_length
             double bar_length = img.cols/2 - 10.0;
             double bar_height = 10.0;
 
             //v_bar
-            Point2f v1(1.0/2.0*img.cols,2.0/3.0*img.rows);
+            Point2f v1(1.0/2.0*img.cols,1.0/2.0*img.rows);
             Point2f v2 = v1 + Point2f(bar_length,bar_height);
             rectangle(cf_img,v1,v2,Scalar(100,100,100),2);
 
-            Point2f vy1(1.0/2.0*img.cols,2.0/3.0*img.rows + 2.0*bar_height);
+            Point2f vy1(1.0/2.0*img.cols, v1.y + 2.0*bar_height);
             Point2f vy2 = vy1 + Point2f(bar_length,bar_height);
             rectangle(cf_img,vy1,vy2,Scalar(100,100,100),2);
 
@@ -433,13 +391,13 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             double vy_value = (vy)/linear_vel_max*(bar_length/2);
 
             double w_red = abs(w_value)/(bar_length/2)*255.0 ;
-            double w_green = 255.0 - w_red;            
+            double w_green = 255.0 - w_red;
             double v_red = abs(v_value)/(bar_length/2)*255.0 ;
             double v_green = 255.0 - v_red;
             double vy_red = abs(vy_value)/(bar_length/2)*255.0 ;
             double vy_green = 255.0 - vy_red;
 
-            Point2f w1(1.0/2.0*img.cols,3.0/4.0*img.rows + 2.0*bar_height);
+            Point2f w1(1.0/2.0*img.cols,v1.y + 2.0*bar_height + 2.0*bar_height );
             Point2f w2 = w1 + Point2f(bar_length,bar_height);
             rectangle(cf_img,w1,w2,Scalar(100,100,100),2);
 
@@ -454,7 +412,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             text_str = "vx = ";
             v_size = getTextSize(text_str,1,font_scale,1,0);
             putText(cf_img, text_str,Point(10,v2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);
-           
+
             text_str = "";
             convert.str(""); convert.clear();
             convert << setprecision(4) << linear_vel;
@@ -490,7 +448,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             text_str = "w = ";
             w_size = getTextSize(text_str,1,font_scale,1,0);
             putText(cf_img, text_str,Point(10,w2.y),1,font_scale,Scalar(255,255,255),1,CV_AA);
-           
+
             text_str = "";
             convert.str(""); convert.clear();
             convert << setprecision(4) << wz;
@@ -519,7 +477,58 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
 
 
-            cf_img.copyTo(total(Rect(2*img.cols,img.rows,img.cols,img.rows)));
+            cf_img.copyTo(total(Rect(0,img.rows,img.cols,img.rows)));
+
+        }       
+
+        if(k == 4){
+            /*Mat gradient_img;
+            cvtColor(sp,gradient_img,CV_GRAY2BGR);
+
+            for (int i = 0 ; i < img.rows ; i+= flowResolution*2){
+                const Point2f* gf_ptr = gf.ptr<Point2f>(i);
+                for (int j = 0 ; j < img.cols ; j += flowResolution*2){
+                    cv::Point2f p(j,i);
+                    cv::Point2f p2(p + gf_ptr[j]*0.1);
+                    arrowedLine2(gradient_img,p,p2,Scalar(0,255,0),0.1,8,0,0.1);
+                }
+            }
+            gradient_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
+
+            //SHOW CENTROIDS
+            //Draw contours' centers
+            Mat centroid_img;
+            //dp.copyTo(centroid_img);
+            centroid_img = dp.clone();
+
+
+            bitwise_not(centroid_img,centroid_img);
+            cvtColor(centroid_img,centroid_img,CV_GRAY2BGR);
+
+            for (int i = 0 ; i < rc.size() ; i ++){
+                circle(centroid_img,rc[i],4,Scalar(255,0,0),-1,8,0);
+            }
+            for (int i = 0 ; i < lc.size() ; i ++){
+                circle(centroid_img,lc[i],4,Scalar(255,0,0),-1,8,0);
+            }
+            circle(centroid_img,xr,4,Scalar(0,0,255),-1,8,0);
+            circle(centroid_img,xl,4,Scalar(0,0,0255),-1,8,0);
+
+
+            Scalar green(0,255,0);
+            Scalar purple(255,0,255);
+            //line(centroid_img,Point(centroid_img.cols/2 + xmin,0),Point(centroid_img.cols/2 + xmin,centroid_img.rows),green);
+            //line(centroid_img,Point(centroid_img.cols/2 + xmax,0),Point(centroid_img.cols/2 + xmax,centroid_img.rows),purple);
+
+
+            centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
+        }        
+
+        if(k == 5){
+            Mat copy_img;
+            cvtColor(img,copy_img,CV_GRAY2BGR);
+
+            copy_img.copyTo(total(Rect(2*img.cols,img.rows,img.cols,img.rows)));//*/
 
         }//*/
 
