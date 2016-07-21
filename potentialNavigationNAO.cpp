@@ -355,6 +355,8 @@ void potentialNavigationNAO::run(){
                 current_imageTime = (int)ALimg[4]          // second
                                     + (int)ALimg[5] * 1e-6;  // usec to seconds
 
+
+                //std::cout << "camera time interval: " << current_imageTime - previous_imageTime << std::endl;
                 camera_rate = 1.0/( current_imageTime - previous_imageTime);
 
                 previous_imageTime = current_imageTime;
@@ -523,8 +525,10 @@ void potentialNavigationNAO::updateCameraPose(){
 
 
     camera_tilt = atan2(-cameraFrame.at(8),sqrt(cameraFrame.at(9)*cameraFrame.at(9) + cameraFrame.at(10)*cameraFrame.at(10)));
+    //std::cout << "camera_tilt [rad]: " << camera_tilt  << std::endl;
     camera_tilt = M_PI/2.0 - camera_tilt; //should be always 1.2° (39.7°) for top (bottom camera)
     camera_height = cameraFrame.at(11); //should be always 0.45831m for bottom camera
+    //std::cout << "camera height: " << camera_height << std::endl;
     drive.set_cameraPose(cameraFrame);
     drive.set_tilt(camera_tilt);
     drive.set_cameraHeight(camera_height);
@@ -544,8 +548,8 @@ void potentialNavigationNAO::updateTcAndLowPass(){
     loop_time = (now - curtime)/getTickFrequency();
     curtime = now;
 
-    std::cout << "Loop time: " << loop_time << std::endl;
-    cout << "Loop rate:    " << 1.0/loop_time << "Hz" << endl;
+    //std::cout << "Loop time: " << loop_time << std::endl;
+    //cout << "Loop rate:    " << 1.0/loop_time << "Hz" << endl;
 
     cycle_f << 1.0/loop_time << "; " << endl;
 

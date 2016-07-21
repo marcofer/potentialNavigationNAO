@@ -514,12 +514,18 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             circle(centroid_img,xr,4,Scalar(0,0,255),-1,8,0);
             circle(centroid_img,xl,4,Scalar(0,0,0255),-1,8,0);
 
+            for (int i = 0 ; i < good_contours.size() ; i ++){
+                Scalar green(0,255,0);
+                drawContours(centroid_img,good_contours,i,green,3);
+            }
+
 
             Scalar green(0,255,0);
             Scalar purple(255,0,255);
             //line(centroid_img,Point(centroid_img.cols/2 + xmin,0),Point(centroid_img.cols/2 + xmin,centroid_img.rows),green);
             //line(centroid_img,Point(centroid_img.cols/2 + xmax,0),Point(centroid_img.cols/2 + xmax,centroid_img.rows),purple);
-
+            //line(centroid_img,Point(px_margin,0),Point(px_margin,centroid_img.rows),Scalar(255,0,0));
+            //line(centroid_img,Point(centroid_img.cols - px_margin,0),Point(centroid_img.cols - px_margin,centroid_img.rows),Scalar(255,0,0));
 
             centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
         }        

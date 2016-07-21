@@ -116,7 +116,9 @@ private:
     vector < Point2f > centroids, l_centroids, r_centroids;
     Point2f x_r, x_l;
     Point2f prevx_r, prevx_l;
-    Point2f old_xr, old_xl;
+    Point2f old_xr, old_xl, old2_xr, old2_xl, vr, vl, vr_old, vl_old, acc_r, acc_l;
+    Point2f slow_xr, slow_xl, slow_vr, slow_vl, slow_oldxr, slow_oldxl, slow_oldvr, slow_oldvl;
+    double px_margin;
     double delta;
     int delta_int;
     int xrmin, xrmax;
@@ -277,7 +279,7 @@ private:
 	int of_scale;
 
     ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f, error_f, xl_f, xr_f, centr_w_f, R_f, vx_f, vy_f, wz_f, det_f, Ju_f,
-             J_f, pan_f;
+             J_f, pan_f, centroids_vec_f;
 
 
     /* Methods */
@@ -309,6 +311,8 @@ private:
 
     void displayImagesWithName(Mat&, string name);
 	
+    int startTick;
+
     clock_t start, end;
     timeval time_tod, start_plot;
 

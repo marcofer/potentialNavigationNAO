@@ -38,7 +38,7 @@ of_driving::of_driving(){
         RANSAC_imgPercent = 0.5;
 
         dp_threshold = 80;
-        area_ths = 400;//400;
+        area_ths = 100;//400;
 
         xrmin = 100;
         xrmax = 120;
@@ -171,16 +171,38 @@ void of_driving::initFlows(bool save_video){
     x_r = Point2f(img_width,img_height/2);
     x_l = Point2f(0,img_height/2);
 
+    vr = Point2f(0,0);
+    vl = Point2f(0,0);
+    vr_old = Point2f(0,0);
+    vl_old = Point2f(0,0);
+
+    acc_r = Point2f(0,0);
+    acc_l = Point2f(0,0);
+
+    slow_xr = Point2f(img_width,img_height/2);
+    slow_xl = Point2f(0,img_height/2);
+    slow_vr = Point2f(0,0);
+    slow_vl = Point2f(0,0);
+    slow_oldxr = Point2f(img_width,img_height/2);
+    slow_oldxl = Point2f(0,img_height/2);
+    slow_oldvr = Point2f(0,0);
+    slow_oldvl = Point2f(0,0);
 
 
+    prevx_r = x_r; //maybe useless
+    prevx_l = x_l; //maybe useless
 
-    prevx_r = x_r;
-    prevx_l = x_l;
     old_xr = Point2f(img_width,img_height/2);
     old_xl = Point2f(0,img_height/2);
 
+    old2_xr = Point2f(img_width,img_height/2);
+    old2_xl = Point2f(0,img_height/2);
+
+    px_margin = 30;
+
     double fov = 0.8315; //47.64°, from the documentation
     focal_length = ((img_height + real_roiy)/2)/tan(fov/2);
+    std::cout << "FOCAL LENGTH: " << focal_length << std::endl;
     principal_point = cv::Point2f((img_width + real_roix)/2,(img_height + real_roiy)/2);
     K << focal_length, 0, principal_point.x,
          0, focal_length, principal_point.y,
@@ -280,7 +302,7 @@ void of_driving::createWindowAndTracks(){
     //createButton("OpenClose",callbackButton,&open_close,CV_CHECKBOX,0);
 
 
-    createTrackbar("winSize",of_alg_name,&windows_size,51,NULL);//*/
+    /*createTrackbar("winSize",of_alg_name,&windows_size,51,NULL);//*/
 
     /*if(of_alg != LK && of_alg != GPU_BROX){
         createTrackbar("iters",of_alg_name,&of_iterations,50,NULL);
@@ -294,7 +316,7 @@ void of_driving::createWindowAndTracks(){
     }//*/
 
     //createTrackbar("pyr levels",of_alg_name,&maxLayer,5,NULL);
-    createTrackbar("epsilon*100",of_alg_name,&eps_int,500,NULL);
+    /*createTrackbar("epsilon*100",of_alg_name,&eps_int,500,NULL);
     //createTrackbar("of_scale",of_alg_name,&of_scale,10,NULL);
     //createTrackbar("maxLevel",of_alg_name,&maxLayer,6,NULL);
     //createTrackbar("pyr_scale*10",of_alg_name,&pyr_scale10,10,NULL);
@@ -303,7 +325,7 @@ void of_driving::createWindowAndTracks(){
     createTrackbar("O_dilat*10",of_alg_name,&open_dilate_int,200,NULL);
     createTrackbar("C_dilat*10",of_alg_name,&close_dilate_int,200,NULL);
     createTrackbar("C_erode*10",of_alg_name,&close_erode_int,200,NULL);
-    createTrackbar("field weights",of_alg_name,&weight_int,10,NULL);
+    //createTrackbar("field weights",of_alg_name,&weight_int,10,NULL);
     
     createTrackbar("area_ths",of_alg_name,&area_ths,500,NULL);
     //createTrackbar("delta*100",of_alg_name,&delta_int,500,NULL);
@@ -497,7 +519,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec, bool mo
 	/*** MULTI-THREADED DISPLAY ***/
     parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,GrayPrevImg,optical_flow,planar_flow,dominant_plane,smoothed_plane,
                                                    result_field,p_bar,vx,angular_vel,total,rect_ransac, u_pan, real_pan, max_v, max_w, vy, wz,
-                                                   l_centroids,r_centroids,x_l,x_r,good_contours,xrmin,xrmax, theta_des));
+                                                   l_centroids,r_centroids,x_l,x_r,good_contours,xrmin,xrmax, theta_des, px_margin));
     if(save_video){
         record_total.write(total);
     }//*/
@@ -1068,18 +1090,23 @@ void of_driving::computeCentroids(){
     }
 
     //Get the mass centers
+    //std::cout << "centroids found: " << mu.size() << std::endl;
     for (int i = 0 ; i < mu.size() ; i ++){
         Point2f c(mu[i].m10/mu[i].m00,mu[i].m01/mu[i].m00);
         centroids.push_back(c);
-        if(c.y < (img_height - img_height/2)){
+        //std::cout << "centroid #" << i + 1 << ": " << c << std::endl;
+        centroids_vec_f << c.x << ", " << c.y << ",";
+        //if(c.y < (img_height - img_height/2)){
             if(c.x > img_width/2){
                 r_centroids.push_back(c);
             }
             else if(c.x < img_width/2){
                 l_centroids.push_back(c);
             }
-        }
+        //}
     }
+    //std::cout << std::endl;
+    centroids_vec_f << ";" << std::endl;
 
     x_r = Point2f(0,0);
     x_l = Point2f(0,0);
@@ -1088,7 +1115,7 @@ void of_driving::computeCentroids(){
     int l_size = l_centroids.size();
 
     if(r_size == 0){
-    x_r = Point2f(img_width,prevx_r.y);
+    x_r = Point2f(img_width,old_xr.y);
     }
     else{
         for (int i = 0 ; i < r_size ; i ++){
@@ -1097,7 +1124,7 @@ void of_driving::computeCentroids(){
         x_r = x_r*(1.0/((float)r_size));
     }
     if(l_size == 0){
-    x_l = Point2f(0,prevx_l.y);
+    x_l = Point2f(0,old_xl.y);
     }
     else{
         for (int i = 0 ; i < l_size ; i ++){
@@ -1106,8 +1133,10 @@ void of_driving::computeCentroids(){
         x_l = x_l*(1.0/((float)l_size));
     }
 
+
     prevx_r = x_r;
     prevx_l = x_l;
+
 
 }
 
@@ -1282,7 +1311,7 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
     f = focal_length;
 
     Eigen::Matrix<double,2,1> e;
-    double err;
+    double err, theta_err;
 
     Eigen::Matrix<double,2,1> cmd_vel; //vy, wz
     Eigen::Matrix<double,2,1> Jvx;
@@ -1306,18 +1335,58 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
     lambda_d << 2.5, 0.0,
                 0.0, 0.5;
 
-
     double detJu;
     Eigen::Matrix<double,2,2> Juinv;
 
+    double m = 5.0;
+    double c = 0.02;
+
+    vr = (x_r - old_xr)*(1.0/Tc);
+    vl = (x_l - old_xl)*(1.0/Tc);
+
+    acc_r = (vr - vr_old)*(1.0/Tc);
+    acc_l = (vl - vl_old)*(1.0/Tc);//*/
+
+
+    /*if(x_r.x > img_width - px_margin && x_r.x != img_width && vr.x > 0){
+        std::cout << "Right centroid in the damper zone!" << std::endl;
+        std::cout << "x_r (before): " << x_r << std::endl;
+        acc_r = 0.0*acc_r;
+        vr = vr_old + acc_r*Tc;
+        x_r = old_xr + vr*Tc;
+        std::cout << "x_r (after): " << x_l << std::endl;
+
+        //x_r = (2*m*old_xr - m*old2_xr + Tc*c*old_xr)*(1.0/(m + Tc*c));
+        x_r.x = ((x_r.x > img_width) ? (img_width) : (x_r.x));
+        x_r.y = ((x_r.y < img_height) ? ((x_r.y > 0 ) ? (x_r.y) : (0)) : (img_height));
+    }
+    if(x_l.x < px_margin && x_l.x != 0.0 && vl.x < 0){
+        std::cout << "Left centroid in the damper zone!" << std::endl;
+        std::cout << "x_l (before): " << x_l << std::endl;
+        acc_l = 0.0*acc_l;
+        vl = vl_old + acc_l*Tc;
+        x_l = old_xl + vl*Tc;
+        std::cout << "x_l (after): " << x_l << std::endl;
+
+        //x_l = (2*m*old_xl - m*old2_xl + Tc*c*old_xl)*(1.0/(m + Tc*c));
+        x_l.x = ((x_l.x < 0) ? (0) : (x_l.x));
+        x_l.y = ((x_l.y < img_height) ? ((x_l.y > 0 ) ? (x_l.y) : (0)) : (img_height));
+    }//*/
 
     x_r.x = low_pass_filter(x_r.x,old_xr.x,Tc,img_lowpass_freq*0.5);
     x_r.y = low_pass_filter(x_r.y,old_xr.y,Tc,img_lowpass_freq*0.5);
     x_l.x = low_pass_filter(x_l.x,old_xl.x,Tc,img_lowpass_freq*0.5);
     x_l.y = low_pass_filter(x_l.y,old_xl.y,Tc,img_lowpass_freq*0.5);
 
+
+    vr_old = vr;
+    vl_old = vl;
+
+    old2_xr = old_xr;
+    old2_xl = old_xl;
     old_xr = x_r;
     old_xl = x_l;//*/
+
 
     //Restore x_r and x_l coordinates with respect to the real image
     Point2f x_R = x_r + Point2f(real_roix,real_roiy);
@@ -1326,7 +1395,6 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
     //Extract normalized coordinates
     c_rn = (x_R - principal_point);
     c_ln = (x_L - principal_point);
-
 
     xl = c_ln.x;
     yl = c_ln.y;
@@ -1370,6 +1438,8 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
     //Define the error
     if(single_control_var){
         err = xl + xr;
+        theta_err = theta_des - real_pan;
+
         //std::cout << "err: " << err << std::endl;
     }
     else{
@@ -1381,6 +1451,7 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
     v << linear_vel;
     //v3 << vx, vy, 0, 0, 0, wz;
 
+
     if(single_control_var){
 
         // Multiply the interaction matrices by the twist matrix
@@ -1391,9 +1462,16 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
         Jv = J.block<1,3>(0,0);
         Jw = J.block<1,3>(0,3);
 
+        vx = linear_vel*cos(real_pan);
+        vy = linear_vel*sin(real_pan);
 
-        pan_dot = - (lambda*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - wz;
-        //pan_dot = - (lambda*err + Jv(0)*vx + Jv(1)*vy + Jw(2)*wz)/(Lx_l + Lx_r)(5);
+        /*wz = - lambda_w*theta_err; // !!! Non deve essere u_pan, ma l'angolo di pan misurato dagli encoder, devi correggere questa riga!!!
+        wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;
+        pan_dot = - (lambda*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - wz;//*/
+
+        pan_dot = 0.05 * theta_err;
+        wz = - ( 0.3*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - pan_dot;
+        wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;//*/
 
         if(!VREP_SIM || (VREP_SIM && move_robot)){
             u_pan = u_pan_old + pan_dot*Tc;
@@ -1407,11 +1485,6 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
         //applyPanCmdonNAOqi(move_robot);
         real_pan = getRealPanFromNAOqi();
 
-        vx = linear_vel*cos(real_pan);
-        vy = linear_vel*sin(real_pan);
-        wz = - lambda_w*(theta_des - real_pan); // !!! Non deve essere u_pan, ma l'angolo di pan misurato dagli encoder, devi correggere questa riga!!!
-
-        wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;
 
         /*std::cout << "theta_des: " << theta_des << std::endl;
         std::cout << "real_pan: " << real_pan << std::endl;
@@ -1459,12 +1532,12 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
 
 
         //std::cout << "cmd_vel: " << cmd_vel << std::endl;
-        wz = - cmd_vel(0);
-        pan_dot = cmd_vel(1);
-
-        wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;
 
         if(!VREP_SIM || (VREP_SIM && move_robot)){ // <-- RICORDATI DI AGGIUSTARE QUI!!!
+            wz = cmd_vel(0);
+            pan_dot = cmd_vel(1);
+
+            wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;
             u_pan = u_pan_old + pan_dot*Tc;
             u_pan_old = u_pan;
             u_pan = (u_pan < MAXYAW) ? ( (u_pan > MINYAW) ? (u_pan) : (MINYAW) ) : (MAXYAW) ;
@@ -1489,7 +1562,7 @@ void of_driving::computeRobotVelocities(bool move_robot, bool changeRef){
 
     if(record){
         if(single_control_var){
-            error_f << err << "; " << endl;
+            error_f << err << ", " << (theta_des - real_pan) << "; " << endl;
         }
         else{
             error_f << e(0,0) << ", "
@@ -1795,6 +1868,7 @@ void of_driving::openFiles(const string full_path){
     det_f.open((full_path + "detJu.txt").c_str(),ios::app);
     Ju_f.open((full_path + "Ju.txt").c_str(),ios::app);
     J_f.open((full_path + "J.txt").c_str(),ios::app);
+    centroids_vec_f.open((full_path + "centroids_vec_f.txt").c_str(),ios::app);
 
 }
 
@@ -1814,6 +1888,7 @@ void of_driving::closeFiles(){
     det_f.close();
     Ju_f.close();
     J_f.close();
+    centroids_vec_f.close();
 }
 
 
