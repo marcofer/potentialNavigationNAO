@@ -14,6 +14,8 @@
 #include "of_driving.h"
 
 #include "utils.h"
+#include <alproxies/alrobotpostureproxy.h>
+
 
 using namespace std;
 using namespace cv;
@@ -39,6 +41,7 @@ private:
     bool record;
 
     bool changeRefTheta;
+    bool enableNarrowCheck;
 
     //online structures
     string pip;
@@ -102,6 +105,7 @@ private:
     void enableRecording();
     void cleanAllActivities();
     void printTiltInfo();
+    void callNaoqiMove(char *key);
 
     short int catchState(char);
     void applyControlInputs();

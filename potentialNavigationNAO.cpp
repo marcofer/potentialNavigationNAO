@@ -14,7 +14,6 @@ potentialNavigationNAO::potentialNavigationNAO(
       : AL::ALModule(broker, name)
       , motionProxy(AL::ALMotionProxy(broker))
       , cameraProxy(AL::ALVideoDeviceProxy(broker))
-
 {
     // If the running NAOqi instance is not local, instantiate the VideoRecorder Proxy to record video from camera
     if(broker->getParentIP() != "127.0.0.1" && SAVE_VIDEO){
@@ -156,6 +155,7 @@ void potentialNavigationNAO::init(){
     record = true;
 
     changeRefTheta = false;
+    enableNarrowCheck = false;
 }
 
 
@@ -197,6 +197,9 @@ void potentialNavigationNAO::cleanAllActivities(){
     cout << "Resetting initial posture ... " << endl;
     motionProxy.moveInit();
 
+    qi::os::sleep(1);
+
+    motionProxy.rest();
 
     cv::destroyAllWindows();
 
@@ -323,6 +326,8 @@ void potentialNavigationNAO::run(){
     double tic = getTickCount();
 
     std::thread regulateHeadYaw(&of_driving::applyPanCmdonNAOqi, &drive, &move_robot, &key);
+    std::thread moveThread(&of_driving::callNaoqiMove, &drive, &move_robot, &key);
+    //std::thread moveThread(&potentialNavigationNAO::callNaoqiMove, this, &key);
 
     while(true){
 
@@ -404,30 +409,18 @@ void potentialNavigationNAO::run(){
 
                 //make the algorithm run
                 try{
-                    drive.run(img,prev_img,SAVE_VIDEO,record,move_robot,changeRefTheta);
+                    drive.run(img,prev_img,SAVE_VIDEO,record,move_robot,enableNarrowCheck);
                 }
                 catch(...){
                     cerr << "Problem in drive.run. " << endl;
                     std::exit(1);
                 }
 
-                applyControlInputs(); // here wz is updated
+                //applyControlInputs(); // here wz is updated
 
                 //command NAO
-                if((move_robot) || (manual)){
-                    //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
-                    drive.set_linearVel(vmax);
-                    drive.set_angVel(wz);
-                    //motionProxy.move(v,vy,wz);//FRAME_ROBOT
-                    motionProxy.move(vx,vy,wz);//FRAME_ROBOT
+                //callNaoqiMove(&key);
 
-                    //motionProxy.move(0.0,0.0,0.5);
-                }
-                else{
-                    //drive.set_linearVel(0.0);
-                    drive.set_angVel(0.0);
-                    motionProxy.stopMove();
-                }
                 double toc = getTickCount();
                 double tictoc = (toc - tic)/getTickFrequency();
 
@@ -447,9 +440,30 @@ void potentialNavigationNAO::run(){
 
     //drive.set_headYawRegulation(true);
     regulateHeadYaw.join();
+    moveThread.join();
     cleanAllActivities();
 
 }
+
+void potentialNavigationNAO::callNaoqiMove(char *key){
+    //while((int)*key == 27){
+        if((move_robot) || (manual)){
+            //motionProxy.move(v,0.0f,w);//FRAME_ROBOT
+            drive.set_linearVel(vmax);
+            drive.set_angVel(wz);
+            //motionProxy.move(v,vy,wz);//FRAME_ROBOT
+            motionProxy.move(vx,vy,wz);//FRAME_ROBOT
+
+            //motionProxy.move(0.0,0.0,0.5);
+        }
+        else{
+            //drive.set_linearVel(0.0);
+            drive.set_angVel(0.0);
+            motionProxy.stopMove();
+        }
+    //}
+}
+
 
 short int potentialNavigationNAO::catchState(char key){
     if((int)key == 27){
@@ -473,7 +487,7 @@ short int potentialNavigationNAO::catchState(char key){
 
     }
     else if(key=='c'){
-        changeRefTheta = true;
+        enableNarrowCheck = true;
     }
     return 1;
 }

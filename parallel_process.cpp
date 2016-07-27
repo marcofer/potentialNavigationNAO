@@ -279,7 +279,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
 
     for (int k = range.start ; k < 6 ; k ++){
         
-        if(k == 0){
+        if(k == 1){
             Mat u_img, gImg;
             //cvtColor(img,gImg,CV_BGR2GRAY);
 
@@ -297,10 +297,10 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
                 }
             }
 
-            u_img.copyTo(total(Rect(0,0,img.cols,img.rows)));
+            u_img.copyTo(total(Rect(img.cols,0,img.cols,img.rows)));
         }
 
-        if(k == 1){
+        if(k == 2){
             Mat p_img, gImg;
             //cvtColor(img,gImg,CV_BGR2GRAY);
             //img.copyTo(gImg);
@@ -317,20 +317,20 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
                     arrowedLine2(p_img,p,p2,Scalar(255,255,0),0.1,8,0,0.1);
                 }
             }
-            p_img.copyTo(total(Rect(img.cols,0,img.cols,img.rows)));
+            p_img.copyTo(total(Rect(img.cols*2,0,img.cols,img.rows)));
         }        
 
 
-        if(k == 2){
+        if(k == 3){
             Mat dp_img;
             cvtColor(dp,dp_img,CV_GRAY2BGR);
             rectangle(dp_img,dpROI.tl(),dpROI.br(),Scalar(0,255,0),4);
             Point2f p(dp.cols/2,dp.rows - 10);
             //circle(dp_img,p,3,Scalar(0,0,255),2);
-            dp_img.copyTo(total(Rect(2*img.cols,0,img.cols,img.rows)));
+            dp_img.copyTo(total(Rect(0,img.rows,img.cols,img.rows)));
         }        
 
-        if(k == 3){
+        if(k == 5){
             /*Mat sp_img;
             cvtColor(sp,sp_img,CV_GRAY2BGR);
             sp_img.copyTo(total(Rect(0,img.rows,img.cols,img.rows)));//*/
@@ -474,10 +474,7 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             //arrowedLine2(cf_img,center,center + pb,Scalar(0,255,0),3.0,1,0,0.1);
             //arrowedLine2(cf_img,center,center + Vy,Scalar(255,255,0),3.0,1,0,0.1);
 
-
-
-
-            cf_img.copyTo(total(Rect(0,img.rows,img.cols,img.rows)));
+            cf_img.copyTo(total(Rect(img.cols*2,img.rows,img.cols,img.rows)));
 
         }       
 
@@ -505,15 +502,74 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             bitwise_not(centroid_img,centroid_img);
             cvtColor(centroid_img,centroid_img,CV_GRAY2BGR);
 
+            Point2f xr_n = xr - Point2f(160,60);
+            Point2f xl_n = xl - Point2f(160,60);
+
+            Point2f err = xr_n + xl_n;
+            err.y = err.y/2;
+            err = err + Point2f(160,60);
+
             for (int i = 0 ; i < rc.size() ; i ++){
                 circle(centroid_img,rc[i],4,Scalar(255,0,0),-1,8,0);
             }
             for (int i = 0 ; i < lc.size() ; i ++){
                 circle(centroid_img,lc[i],4,Scalar(255,0,0),-1,8,0);
             }
-            circle(centroid_img,xr,4,Scalar(0,0,255),-1,8,0);
-            circle(centroid_img,xl,4,Scalar(0,0,0255),-1,8,0);
 
+            Scalar l_color, r_color;
+            Scalar gray(50,50,50);
+            Scalar red(0,0,255);
+
+            if(xl.x < px_margin){
+                l_color = gray;
+            }
+            else{
+                l_color = red;
+            }
+            if(xr.x > centroid_img.cols - px_margin){
+                r_color = gray;
+            }
+            else{
+                r_color = red;
+            }
+
+            //Draw centroids
+            circle(centroid_img,xr,4,r_color,-1,8,0);
+            circle(centroid_img,xl,4,l_color,-1,8,0);
+
+            //Draw error centroid
+            circle(centroid_img,err,4,Scalar(255,0,255),-1,8,0);
+
+
+            if(narrowCheck){
+                // Draw min-max points of contours
+                circle(centroid_img,maxLP,4,Scalar(255,255,0),-1,8,0);
+                circle(centroid_img,minRP,4,Scalar(255,255,0),-1,8,0);
+                line(centroid_img,minRP,maxLP,Scalar(255,255,0));
+
+
+                string text_str;
+                ostringstream convert;
+                text_str = "";
+                text_str = "min x-distance: ";
+                float text_scale = 0.6;
+                Size text_size = getTextSize(text_str,1,text_scale,1,0);
+                Point text_point(img.cols/2 - text_size.width,img.rows - text_size.height - 5);
+                putText(centroid_img, text_str,text_point,1,text_scale,Scalar(255,255,255),1,CV_AA);
+
+                text_str = "";
+                convert.str(""); convert.clear();
+                convert << setprecision(4) << abs(minRP.x - maxLP.x);
+                text_str = convert.str();
+                Size minMaxSize = getTextSize(text_str,1,text_scale,1,0);
+                Point minMaxPoint = Point(text_point.x + text_size.width + 5, text_point.y);
+                putText(centroid_img, text_str,minMaxPoint,1,text_scale,Scalar(255,255,255),1,CV_AA);
+            }
+
+            line(centroid_img,Point(centroid_img.cols/2,0),Point(centroid_img.cols/2,centroid_img.rows),Scalar(30,30,30));
+            line(centroid_img,Point(0,centroid_img.rows/2),Point(centroid_img.cols,centroid_img.rows/2),Scalar(30,30,30));
+
+            // Draw contours
             for (int i = 0 ; i < good_contours.size() ; i ++){
                 Scalar green(0,255,0);
                 drawContours(centroid_img,good_contours,i,green,3);
@@ -530,11 +586,11 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             centroid_img.copyTo(total(Rect(img.cols,img.rows,img.cols,img.rows)));//*/
         }        
 
-        if(k == 5){
+        if(k == 0){
             Mat copy_img;
             cvtColor(img,copy_img,CV_GRAY2BGR);
 
-            copy_img.copyTo(total(Rect(2*img.cols,img.rows,img.cols,img.rows)));//*/
+            copy_img.copyTo(total(Rect(0,0,img.cols,img.rows)));//*/
 
         }//*/
 

@@ -6,8 +6,11 @@
 
 #include "parallel_process.h"
 
-#define ANGULAR_VEL_MAX 0.1//0.83
-#define LINEAR_VEL_MAX 0.06//0.0952
+#define ANGULAR_VEL_MAX 0.1//0.83 //0.1
+
+
+//#define LINEAR_VEL_MAX 0.07//0.0952 //0.06 //ON REAL ROBOT
+#define LINEAR_VEL_MAX 0.0952//0.0952 //0.06 //IN SIMULATION
 
 
 using namespace std;
@@ -72,6 +75,9 @@ public:
 
 
     void applyPanCmdonNAOqi(bool*, char*);
+
+    void callNaoqiMove(bool* move_robot, char*);
+
     double getRealPanFromNAOqi();
 
     void createWindowAndTracks();
@@ -110,9 +116,11 @@ private:
         bool open_close;
 
     //Centroids variables
-    vector < vector < cv::Point > > contours, good_contours, ground_contours, ConvexHullPoints;
+    vector < vector < cv::Point > > contours, good_contours, ground_contours, l_good_contours, r_good_contours;
+    vector < double > lx_contours, rx_contours, ly_contours, ry_contours;
+    Point2d maxLeftPoint, minRightPoint, prevLeftPoint, prevRightPoint;
     //vector<Point> ConvexHullPoints;
-    vector < Vec4i > hierarchy;
+    vector < Vec4i > hierarchy, r_hierarchy, l_hierarchy;
     vector < Point2f > centroids, l_centroids, r_centroids;
     Point2f x_r, x_l;
     Point2f prevx_r, prevx_l;
@@ -123,8 +131,9 @@ private:
     int delta_int;
     int xrmin, xrmax;
     double theta_des;
+    double narrow_width, old_narrow_width;
+    int low_min_narrow_ths, low_max_narrow_ths, high_min_narrow_ths, high_max_narrow_ths;
     Mat motImg;
-
 
     struct timeval start_t, end_t;
 
@@ -247,8 +256,9 @@ private:
 	int flowResolution;
 
 	//RANSAC inliers counter
-	int point_counter, best_counter;
+    int point_counter, best_counter, prev_counter;
     int nf_point_counter, nf_best_counter;
+    int high_counter, low_counter;
 
 	//RANSAC iterations
 	int iteration_num;
@@ -279,7 +289,7 @@ private:
 	int of_scale;
 
     ofstream nofilt_barFile, filt_barFile, theta_f, angularVel_f, error_f, xl_f, xr_f, centr_w_f, R_f, vx_f, vy_f, wz_f, det_f, Ju_f,
-             J_f, pan_f, centroids_vec_f;
+             J_f, pan_f, centroids_vec_f, plane_area_f, narrow_distance_f;
 
 
     /* Methods */
