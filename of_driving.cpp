@@ -38,7 +38,7 @@ of_driving::of_driving(){
         RANSAC_imgPercent = 0.1;
 
         dp_threshold = 80;//80;//80;
-        area_ths = 20;//100;//400;
+        area_ths = 100;//100;//400;
 
         xrmin = 100;
         xrmax = 120;
@@ -62,7 +62,7 @@ of_driving::of_driving(){
         of_iterations = 3;//3;
 
         open_erode = 1.0;//4.9;
-        open_dilate = 7.0;
+        open_dilate = 6.0;
         close_erode = 1.0;
         close_dilate = 1.0;
         of_alg = 3;
@@ -75,10 +75,10 @@ of_driving::of_driving(){
         xrmin = 110;
         xrmax = 130;
 
-        low_min_narrow_ths = 100;
-        low_max_narrow_ths = 110;
-        high_min_narrow_ths = 110;
-        high_max_narrow_ths = 120;
+        low_min_narrow_ths = 110;
+        low_max_narrow_ths = 120;
+        high_min_narrow_ths = 120;
+        high_max_narrow_ths = 130;
 
 
     }
@@ -133,6 +133,7 @@ of_driving::of_driving(){
     headYawRegulation = false;
 
     gettimeofday(&start_t,0);
+    cur_time = getTickCount();
 
 }
 
@@ -187,7 +188,10 @@ void of_driving::initFlows(bool save_video){
     narrow_width = 0.0;
     old_narrow_width = 0.0;
 
-
+    old_real_pan = 0.0;
+    diff_qp = 0.0;
+    filtered_qp = 0.0;
+    old_diff_qp = 0.0;
 
     x_r = Point2f(img_width,img_height/2);
     x_l = Point2f(0,img_height/2);
@@ -224,6 +228,7 @@ void of_driving::initFlows(bool save_video){
     double fov = 0.8315; //47.64°, from the documentation
     focal_length = ((img_height + real_roiy)/2)/tan(fov/2);
     std::cout << "FOCAL LENGTH: " << focal_length << std::endl;
+    std::cout << "Operating conditions: " << img_height / (2*focal_length) << std::endl;
     principal_point = cv::Point2f((img_width + real_roix)/2,(img_height + real_roiy)/2);
     K << focal_length, 0, principal_point.x,
          0, focal_length, principal_point.y,
@@ -1557,14 +1562,22 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
             }
             else if(narrow_width < low_thres){
                 theta_des = max_qp;
-                std::cout << "Orientation changed to 90 deg!" << std::endl;
             }
             else{
                 theta_des = max_qp - ((narrow_width - low_thres)/(high_thres  - low_thres))*max_qp;
             }
-        }//*/
+        }
 
+    }//*/
+
+    /*if(narrowCheck){
+        theta_des = max_qp;
     }
+    else{
+        theta_des = 0.0;
+    }//*/
+
+    //theta_des = 0.0;
 
     bool single_control_var = true;
 
@@ -1601,6 +1614,10 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
         vx = linear_vel*cos(real_pan);
         vy = linear_vel*sin(real_pan);
 
+        if(!VREP_SIM){
+            vx *= 0.8;
+        }
+
         // CONTROLLER 2
 
         float lambda;
@@ -1625,18 +1642,44 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
         double Kw, Kp;
 
         if(VREP_SIM){
-            Kw = 0.4; //0.4
+            Kw = 0.4;//0.4
             Kp = 0.05;//0.05
         }
         else{
-            Kw = 1.5;//.8
-            Kp = 0.05;
+            Kw = 0.5;//0.6!!!!
+            Kp = 0.05;//0.1!!!
         }
 
+        double now = getTickCount();
+        double deltaT = (now - cur_time)/getTickFrequency();
+        cur_time = now;
 
         pan_dot = - Kp * theta_err;
+        diff_qp = (real_pan - old_real_pan)/deltaT;
+
+        double pole = 10;
+        double zero = 1;
+
+
+        //filtered_qp = (filtered_qp + deltaT*(diff_qp + zero*real_pan))/(1+pole*deltaT);
+        diff_qp = low_pass_filter(diff_qp,old_diff_qp,deltaT,1.0/(img_lowpass_freq*10.0));
+        old_diff_qp = diff_qp;
+
         wz = - ( Kw*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - pan_dot;
         wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;//*/
+
+        std::cout << "Kw*err: " << Kw*err << std::endl;
+        std::cout << "Jvx: " << Jv(0) << std::endl;
+        std::cout << "Jvy: " << Jv(1) << std::endl;
+        std::cout << "Jwz: " << Jw(2) << std::endl;
+        std::cout << "Jvx*vx: " << Jv(0)*vx << std::endl;
+        std::cout << "Jvy*vy: " << Jv(1)*vy << std::endl;
+        std::cout << "visual error: " << err << std::endl;
+        std::cout << "theta error: " << theta_err << std::endl;
+        std::cout << "pan_dot: " << pan_dot << std::endl;
+        std::cout << "wz: " << wz << std::endl;
+        std::cout << "diff_qp: " << diff_qp << std::endl;//*/
+        std::cout << "filtered_qp:" << filtered_qp << std::endl << std::endl;
 
         if((!VREP_SIM && move_robot) || (VREP_SIM && move_robot)){
             u_pan = u_pan_old + pan_dot*Tc;
@@ -1648,6 +1691,7 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
         //std::cout << "u_pan: " << u_pan << std::endl;
 
         //applyPanCmdonNAOqi(move_robot);
+        old_real_pan = real_pan;
         real_pan = getRealPanFromNAOqi();
 
 
@@ -1661,7 +1705,7 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
 
 
         if(record){
-            pan_f << pan_dot << ", " << u_pan << ", " << real_pan << "; " << std::endl;
+            pan_f << diff_qp << ", " << filtered_qp << ", " << pan_dot << ", " << u_pan << ", " << real_pan << "; " << std::endl;
         }
 
         /*std::cout << "u_pan: " << u_pan << std::endl;

@@ -24,6 +24,7 @@
 #include <alproxies/almotionproxy.h>
 #include <alproxies/alvideodeviceproxy.h>
 #include <alproxies/alvideorecorderproxy.h>
+#include <alproxies/alrobotpostureproxy.h>
 #include <alerror/alerror.h>
 #include <alvision/alvisiondefinitions.h>
 #include <qi/os.hpp>
@@ -34,6 +35,7 @@
 
 
 #define VREP_SIM true
+#define DEBUG false
 
 #define LEFT_UD_AXIS 1
 #define RIGHT_LR_AXIS 2
@@ -52,8 +54,8 @@
 #define MAXPITCH 0.515047
 //#define MINYAW -2.0856685
 //#define MAXYAW 2.0856685
-#define MINYAW -2.07694//-1.59//-1.59/2.0
-#define MAXYAW 2.07694//1.59//1.59/2.0
+#define MINYAW - 90.0*M_PI/180.0//-2.07694//-1.59//-1.59/2.0
+#define MAXYAW 90.0*M_PI/180.0//2.07694//1.59//1.59/2.0
 
 #define SAVE_VIDEO false
 #define FRAME_ROBOT 2

@@ -6,7 +6,8 @@
 
 #include "parallel_process.h"
 
-#define ANGULAR_VEL_MAX 0.1//0.83 //0.1
+//#define ANGULAR_VEL_MAX 0.2//0.83 //0.1 //ON REAL ROBOT
+#define ANGULAR_VEL_MAX 0.1//0.83 //0.1 //IN SIMULATION
 
 
 //#define LINEAR_VEL_MAX 0.07//0.0952 //0.06 //ON REAL ROBOT
@@ -108,7 +109,8 @@ private:
     Eigen::Matrix4d cameraPose;
     double vx, vy, wz;
     double pan_dot;
-    double u_pan, u_pan_old, real_pan;
+    double u_pan, u_pan_old, real_pan, old_real_pan;
+    double diff_qp, filtered_qp, old_diff_qp;
     std::vector<float> headYawFrame;
 
 	int area_ths;
@@ -136,6 +138,7 @@ private:
     Mat motImg;
 
     struct timeval start_t, end_t;
+    double cur_time;
 
 	Mat H;
 

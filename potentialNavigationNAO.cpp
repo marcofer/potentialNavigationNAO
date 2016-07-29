@@ -197,9 +197,9 @@ void potentialNavigationNAO::cleanAllActivities(){
     cout << "Resetting initial posture ... " << endl;
     motionProxy.moveInit();
 
-    qi::os::sleep(1);
+    /*qi::os::sleep(1);
 
-    motionProxy.rest();
+    motionProxy.rest();//*/
 
     cv::destroyAllWindows();
 
@@ -326,12 +326,12 @@ void potentialNavigationNAO::run(){
     double tic = getTickCount();
 
     std::thread regulateHeadYaw(&of_driving::applyPanCmdonNAOqi, &drive, &move_robot, &key);
-    std::thread moveThread(&of_driving::callNaoqiMove, &drive, &move_robot, &key);
+    //std::thread moveThread(&of_driving::callNaoqiMove, &drive, &move_robot, &key);
     //std::thread moveThread(&potentialNavigationNAO::callNaoqiMove, this, &key);
 
     while(true){
 
-        //motionProxy.move(-0.05,0.6,0.1);
+        //motionProxy.move(-0.1,0.6,0.1);
 
         key = cv::waitKey(1);
 
@@ -365,7 +365,7 @@ void potentialNavigationNAO::run(){
                 camera_rate = 1.0/( current_imageTime - previous_imageTime);
 
                 previous_imageTime = current_imageTime;
-                cameraRate_f << camera_rate << ";" << endl;//*/
+                cameraRate_f << camera_rate << ";" << endl;
             }
             else{
 
@@ -386,14 +386,6 @@ void potentialNavigationNAO::run(){
 
             }
 
-
-            /*if( online && (current_imageTime - previous_imageTime) >= 1e-4){
-
-
-                camera_rate = 1.0/(current_imageTime - previous_imageTime);
-                std::cout << "camera_rate: " << camera_rate << std::endl;
-                previous_imageTime = current_imageTime;
-                cameraRate_f << camera_rate << ";" << endl;//*/
 
 
                 // update working images
@@ -416,10 +408,10 @@ void potentialNavigationNAO::run(){
                     std::exit(1);
                 }
 
-                //applyControlInputs(); // here wz is updated
+                applyControlInputs(); // here wz is updated
 
                 //command NAO
-                //callNaoqiMove(&key);
+                callNaoqiMove(&key);
 
                 double toc = getTickCount();
                 double tictoc = (toc - tic)/getTickFrequency();
@@ -440,7 +432,7 @@ void potentialNavigationNAO::run(){
 
     //drive.set_headYawRegulation(true);
     regulateHeadYaw.join();
-    moveThread.join();
+    //moveThread.join();
     cleanAllActivities();
 
 }
@@ -487,6 +479,7 @@ short int potentialNavigationNAO::catchState(char key){
 
     }
     else if(key=='c'){
+        //enableNarrowCheck = !enableNarrowCheck;
         enableNarrowCheck = true;
     }
     return 1;
@@ -562,7 +555,7 @@ void potentialNavigationNAO::updateTcAndLowPass(){
     loop_time = (now - curtime)/getTickFrequency();
     curtime = now;
 
-    //std::cout << "Loop time: " << loop_time << std::endl;
+    std::cout << "Loop time: " << loop_time << std::endl;
     //cout << "Loop rate:    " << 1.0/loop_time << "Hz" << endl;
 
     cycle_f << 1.0/loop_time << "; " << endl;
