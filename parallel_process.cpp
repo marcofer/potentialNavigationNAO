@@ -520,18 +520,15 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
             Scalar gray(50,50,50);
             Scalar red(0,0,255);
 
-            if(xl.x < px_margin){
-                l_color = gray;
-            }
-            else{
-                l_color = red;
-            }
-            if(xr.x > centroid_img.cols - px_margin){
+            /*   if(xr.x > centroid_img.cols - px_margin){
                 r_color = gray;
             }
             else{
                 r_color = red;
-            }
+            }//*/
+            l_color = red;
+            r_color = red;
+
 
             //Draw centroids
             circle(centroid_img,xr,4,r_color,-1,8,0);
@@ -545,26 +542,26 @@ void ParallelDisplayImages::operator()(const cv::Range& range) const{
                 // Draw min-max points of contours
                 circle(centroid_img,maxLP,4,Scalar(255,255,0),-1,8,0);
                 circle(centroid_img,minRP,4,Scalar(255,255,0),-1,8,0);
+                circle(centroid_img,middleP,4,Scalar(255,255,0),-1,8,0);
                 line(centroid_img,minRP,maxLP,Scalar(255,255,0));
-
-
-                string text_str;
-                ostringstream convert;
-                text_str = "";
-                text_str = "min x-distance: ";
-                float text_scale = 0.6;
-                Size text_size = getTextSize(text_str,1,text_scale,1,0);
-                Point text_point(img.cols/2 - text_size.width,img.rows - text_size.height - 5);
-                putText(centroid_img, text_str,text_point,1,text_scale,Scalar(255,255,255),1,CV_AA);
-
-                text_str = "";
-                convert.str(""); convert.clear();
-                convert << setprecision(4) << abs(minRP.x - maxLP.x);
-                text_str = convert.str();
-                Size minMaxSize = getTextSize(text_str,1,text_scale,1,0);
-                Point minMaxPoint = Point(text_point.x + text_size.width + 5, text_point.y);
-                putText(centroid_img, text_str,minMaxPoint,1,text_scale,Scalar(255,255,255),1,CV_AA);
             }
+
+            string text_str;
+            ostringstream convert;
+            text_str = "";
+            text_str = "min x-distance: ";
+            float text_scale = 0.6;
+            Size text_size = getTextSize(text_str,1,text_scale,1,0);
+            Point text_point(img.cols/2 - text_size.width,img.rows - text_size.height - 5);
+            putText(centroid_img, text_str,text_point,1,text_scale,Scalar(0,0,255),1,CV_AA);
+
+            text_str = "";
+            convert.str(""); convert.clear();
+            convert << setprecision(4) << narrow_width;
+            text_str = convert.str();
+            Size minMaxSize = getTextSize(text_str,1,text_scale,1,0);
+            Point minMaxPoint = Point(text_point.x + text_size.width + 5, text_point.y);
+            putText(centroid_img, text_str,minMaxPoint,1,text_scale,Scalar(0,0,255),1,CV_AA);
 
             line(centroid_img,Point(centroid_img.cols/2,0),Point(centroid_img.cols/2,centroid_img.rows),Scalar(30,30,30));
             line(centroid_img,Point(0,centroid_img.rows/2),Point(centroid_img.cols,centroid_img.rows/2),Scalar(30,30,30));

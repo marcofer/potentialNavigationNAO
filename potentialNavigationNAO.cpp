@@ -444,7 +444,9 @@ void potentialNavigationNAO::callNaoqiMove(char *key){
             drive.set_linearVel(vmax);
             drive.set_angVel(wz);
             //motionProxy.move(v,vy,wz);//FRAME_ROBOT
+
             motionProxy.move(vx,vy,wz);//FRAME_ROBOT
+            //motionProxy.move(0.0,-0.035,0.2);//FRAME_ROBOT
 
             //motionProxy.move(0.0,0.0,0.5);
         }
@@ -555,7 +557,7 @@ void potentialNavigationNAO::updateTcAndLowPass(){
     loop_time = (now - curtime)/getTickFrequency();
     curtime = now;
 
-    std::cout << "Loop time: " << loop_time << std::endl;
+    //std::cout << "Loop time: " << loop_time << std::endl;
     //cout << "Loop rate:    " << 1.0/loop_time << "Hz" << endl;
 
     cycle_f << 1.0/loop_time << "; " << endl;

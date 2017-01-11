@@ -35,7 +35,7 @@
 
 
 #define VREP_SIM true
-#define DEBUG false
+#define DEBUG true
 
 #define LEFT_UD_AXIS 1
 #define RIGHT_LR_AXIS 2

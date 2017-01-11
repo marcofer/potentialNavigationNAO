@@ -6,12 +6,12 @@
 
 #include "parallel_process.h"
 
-//#define ANGULAR_VEL_MAX 0.2//0.83 //0.1 //ON REAL ROBOT
-#define ANGULAR_VEL_MAX 0.1//0.83 //0.1 //IN SIMULATION
+#define ANGULAR_VEL_MAX 0.3//0.83 //0.1 //ON REAL ROBOT
+//#define ANGULAR_VEL_MAX 0.2//0.83 //0.1 //IN SIMULATION
 
 
-//#define LINEAR_VEL_MAX 0.07//0.0952 //0.06 //ON REAL ROBOT
-#define LINEAR_VEL_MAX 0.0952//0.0952 //0.06 //IN SIMULATION
+#define LINEAR_VEL_MAX 0.05//0.0952 //0.06 //ON REAL ROBOT
+//#define LINEAR_VEL_MAX 0.0952//0.0952 //0.06 //IN SIMULATION
 
 
 using namespace std;
@@ -120,7 +120,7 @@ private:
     //Centroids variables
     vector < vector < cv::Point > > contours, good_contours, ground_contours, l_good_contours, r_good_contours;
     vector < double > lx_contours, rx_contours, ly_contours, ry_contours;
-    Point2d maxLeftPoint, minRightPoint, prevLeftPoint, prevRightPoint;
+    Point2d maxLeftPoint, minRightPoint, prevLeftPoint, prevRightPoint, middle_point;
     //vector<Point> ConvexHullPoints;
     vector < Vec4i > hierarchy, r_hierarchy, l_hierarchy;
     vector < Point2f > centroids, l_centroids, r_centroids;

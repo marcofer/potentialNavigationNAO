@@ -23,29 +23,29 @@ of_driving::of_driving(){
         maxLayer = 2;
 
         //epsilon = 1.0;//0.7;//0.5//0.4;//0.8;
-        epsilon = 0.15;//.15;//0.7;
+        epsilon = 0.05;//0.15;//.15;//0.7;
 
         flowResolution = 4;
         iteration_num = 10;
         of_iterations = 3;//3;
 
-        open_erode = 4.0;//4.0;//4.0//1.0;//4.9;
-        open_dilate = 1.0;//1.0;//1.0;
+        open_erode = 2.0;//4.0;//4.0;//4.0//1.0;//4.9;
+        open_dilate = 3.0;//1.0;//1.0;//1.0;
         close_erode = 1.0;//1.0;
         close_dilate = 1.0;//1.0;
         of_alg = 3;
         of_scale = 1;
         RANSAC_imgPercent = 0.1;
 
-        dp_threshold = 80;//80;//80;
-        area_ths = 100;//100;//400;
+        dp_threshold = 50;//80;//80;
+        area_ths = 200;//100;//400;
 
         xrmin = 100;
         xrmax = 120;
-        low_min_narrow_ths = 90;//90;
-        low_max_narrow_ths = 130;
+        low_min_narrow_ths = 100;//90;
+        low_max_narrow_ths = 160;//130
         high_min_narrow_ths = 110;//110;
-        high_max_narrow_ths = 140;
+        high_max_narrow_ths = 170;//140
 
 
 
@@ -61,24 +61,24 @@ of_driving::of_driving(){
         iteration_num = 10;
         of_iterations = 3;//3;
 
-        open_erode = 1.0;//4.9;
+        open_erode = 7.0;//1.0;//4.9;
         open_dilate = 6.0;
         close_erode = 1.0;
         close_dilate = 1.0;
         of_alg = 3;
         of_scale = 1;
-        RANSAC_imgPercent = 0.1;
+        RANSAC_imgPercent = 0.02;
 
-        dp_threshold = 60;//40
-        area_ths = 200;
+        dp_threshold = 10;//60;//40
+        area_ths = 500;//50;
 
         xrmin = 110;
         xrmax = 130;
 
         low_min_narrow_ths = 110;
-        low_max_narrow_ths = 120;
-        high_min_narrow_ths = 120;
-        high_max_narrow_ths = 130;
+        low_max_narrow_ths = 150;//120;//120
+        high_min_narrow_ths = 150;//120;
+        high_max_narrow_ths = 180;//130;//130
 
 
     }
@@ -185,6 +185,7 @@ void of_driving::initFlows(bool save_video){
     minRightPoint = Point2f(0,0);
     prevLeftPoint = Point2f(0,0);
     prevRightPoint = Point2f(0,0);
+    middle_point = Point2d(0,0);
     narrow_width = 0.0;
     old_narrow_width = 0.0;
 
@@ -354,15 +355,15 @@ void of_driving::createWindowAndTracks(){
         createTrackbar("C_erode*10",of_alg_name,&close_erode_int,200,NULL);
         //createTrackbar("field weights",of_alg_name,&weight_int,10,NULL);
 
-        createTrackbar("area_ths",of_alg_name,&area_ths,500,NULL);
+        createTrackbar("area_ths",of_alg_name,&area_ths,5000,NULL);
         //createTrackbar("delta*100",of_alg_name,&delta_int,500,NULL);//*/
         //createTrackbar("xrmin",of_alg_name,&xrmin,160,NULL);
         //createTrackbar("xrmax",of_alg_name,&xrmax,160,NULL);//*/
 
-        createTrackbar("low_min_narrow",of_alg_name,&low_min_narrow_ths,160,NULL);
-        createTrackbar("low_max_narrow",of_alg_name,&low_max_narrow_ths,160,NULL);
-        createTrackbar("high_min_narrow",of_alg_name,&high_min_narrow_ths,200,NULL);
-        createTrackbar("high_max_narrow",of_alg_name,&high_max_narrow_ths,200,NULL);//*/
+        createTrackbar("low_min_narrow",of_alg_name,&low_min_narrow_ths,200,NULL);
+        createTrackbar("low_max_narrow",of_alg_name,&low_max_narrow_ths,200,NULL);
+        createTrackbar("high_min_narrow",of_alg_name,&high_min_narrow_ths,250,NULL);
+        createTrackbar("high_max_narrow",of_alg_name,&high_max_narrow_ths,250,NULL);//*/
     }
 }
 
@@ -558,7 +559,7 @@ void of_driving::run(Mat& img, Mat& prev_img, bool save_video, bool rec, bool mo
     parallel_for_(Range(0,6),ParallelDisplayImages(6,flowResolution,GrayPrevImg,optical_flow,planar_flow,dominant_plane,smoothed_plane,
                                                    result_field,p_bar,vx,angular_vel,total,rect_ransac, u_pan, real_pan, max_v, max_w, vy, wz,
                                                    l_centroids,r_centroids,x_l,x_r,good_contours,xrmin,xrmax, theta_des, px_margin, maxLeftPoint,
-                                                   minRightPoint, narrowCheck));
+                                                   minRightPoint, narrowCheck, middle_point, narrow_width));
     if(save_video){
         record_total.write(total);
     }//*/
@@ -1165,11 +1166,11 @@ void of_driving::computeCentroids(){
         Point2f c(mu[i].m10/mu[i].m00,mu[i].m01/mu[i].m00);
         centroids.push_back(c);
         centroids_vec_f << c.x << ", " << c.y << ",";
-        //if(c.y < (img_height - img_height/2)){
+        if(c.y < (img_height - 1*img_height/4)){
             if(c.x > img_width/2){
                 r_centroids.push_back(c);
                 for (int j = 0 ; j < good_contours[i].size() ; j ++){
-                    if(VREP_SIM || (!VREP_SIM && good_contours[i][j].y < img_height/2)){
+                    if((VREP_SIM  && good_contours[i][j].y < img_height/2) || (!VREP_SIM && good_contours[i][j].y < img_height/2)){
                         rx_contours.push_back(good_contours[i][j].x);
                         ry_contours.push_back(good_contours[i][j].y);
                     }
@@ -1178,13 +1179,13 @@ void of_driving::computeCentroids(){
             else if(c.x < img_width/2){
                 l_centroids.push_back(c);
                 for (int j = 0 ; j < good_contours[i].size() ; j ++){
-                    if(VREP_SIM || (!VREP_SIM && good_contours[i][j].y < img_height/2)){
+                    if((VREP_SIM  && good_contours[i][j].y < img_height/2) || (!VREP_SIM && good_contours[i][j].y < img_height/2)){
                         lx_contours.push_back(good_contours[i][j].x);
                         ly_contours.push_back(good_contours[i][j].y);
                     }
                 }
             }
-        //}
+        }
     }
     centroids_vec_f << ";" << std::endl;//*/
 
@@ -1532,11 +1533,14 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
 
 
     double nw = abs(maxLeftPoint.x - minRightPoint.x);
-    if(nw >= 30){
+    middle_point.x = (maxLeftPoint.x + minRightPoint.x)/2;
+    middle_point.y = (maxLeftPoint.y + minRightPoint.y)/2;
+
+    if(nw >= 60){
         narrow_width = nw;
     }
 
-    narrow_width = low_pass_filter(narrow_width,old_narrow_width,Tc,1.0/(img_lowpass_freq*0.5));
+    narrow_width = low_pass_filter(narrow_width,old_narrow_width,Tc,1.0/(img_lowpass_freq*0.15));
     old_narrow_width = narrow_width;//*/
 
     if(record){
@@ -1544,15 +1548,19 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
     }
 
     // Select reference head orientation q_p*
-    double max_qp = MAXYAW;
+    double max_qp;
+
+    if(theta_des == 0.0){
+        max_qp = MAXYAW*( (middle_point.x > img_width*0.5) ? (-1) : (-1));///!!!!!!!!!!!!!!!!! change!!!
+    }
+    else{
+        max_qp = MAXYAW*( (theta_des < 0) ? (-1) : (1));
+    }
+
+
     int low_thres = (theta_des == max_qp) ? (low_max_narrow_ths) : (low_min_narrow_ths);
     int high_thres = (theta_des == 0.0) ? (high_min_narrow_ths) : (high_max_narrow_ths);
 
-
-    /*std::cout << "narrow_width: " << narrow_width << std::endl;
-    std::cout << "theta_des: " << theta_des << std::endl;
-    std::cout << "current low threshold: " << low_thres << std::endl;
-    std::cout << "current high threshold: " << high_thres << std::endl << std::endl;//*/
 
     if(narrowCheck){
 
@@ -1570,14 +1578,30 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
 
     }//*/
 
-    /*if(narrowCheck){
-        theta_des = max_qp;
-    }
-    else{
-        theta_des = 0.0;
+    std::cout << "max_qp: " << max_qp << std::endl;
+    std::cout << "theta_des: " << theta_des << std::endl;
+
+
+    // Check for Tjunction ... no need to read all the vector, use minMaxLoc instead ...
+    double maxTjunc_y  = 0.0;
+    if(good_contours.size() == 1){
+        std::vector < double > one_y_contour;
+        for (int i = 0 ; i < good_contours[0].size() ; i ++){
+            one_y_contour.push_back(good_contours[0][i].y);
+        }
+        minMaxLoc(one_y_contour,NULL,&maxTjunc_y,NULL,NULL);
     }//*/
 
-    //theta_des = 0.0;
+
+
+    bool enable_turn = false;
+    if (maxTjunc_y > 1/4*img_height){
+        enable_turn = true;
+    }
+    // ...
+
+
+    //
 
     bool single_control_var = true;
 
@@ -1603,6 +1627,7 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
 
     if(single_control_var){
 
+
         // Multiply the interaction matrices by the twist matrix
         Lx_l = Lx_l*W;
         Lx_r = Lx_r*W;
@@ -1615,8 +1640,16 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
         vy = linear_vel*sin(real_pan);
 
         if(!VREP_SIM){
-            vx *= 0.8;
+            vx *= 0.8;//0.8
+
+            /*if(vy < 0){
+                vx *= 0.8;
+                vy *= 1.5;
+            }//*/
+
         }
+
+
 
         // CONTROLLER 2
 
@@ -1642,12 +1675,12 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
         double Kw, Kp;
 
         if(VREP_SIM){
-            Kw = 0.4;//0.4
-            Kp = 0.05;//0.05
+            Kw = 0.6;//0.4
+            Kp = 0.06;//0.05
         }
         else{
-            Kw = 0.5;//0.6!!!!
-            Kp = 0.05;//0.1!!!
+            Kw = 0.75;//0.75;//0.45//0.7//0.5//0.6!!!!
+            Kp = 0.2;//0.14;//0.1//0.05//0.03//0.1!!!
         }
 
         double now = getTickCount();
@@ -1656,30 +1689,23 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
 
         pan_dot = - Kp * theta_err;
         diff_qp = (real_pan - old_real_pan)/deltaT;
-
-        double pole = 10;
-        double zero = 1;
-
-
-        //filtered_qp = (filtered_qp + deltaT*(diff_qp + zero*real_pan))/(1+pole*deltaT);
         diff_qp = low_pass_filter(diff_qp,old_diff_qp,deltaT,1.0/(img_lowpass_freq*10.0));
-        old_diff_qp = diff_qp;
+        old_diff_qp = diff_qp;//*/
 
-        wz = - ( Kw*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - pan_dot;
+
+        // REAL ROBOT: USA diff_qp
+        // SIMULATED ROBOT: USA pan_dot
+        double pan_vel;
+        if(VREP_SIM){
+            pan_vel = pan_dot;
+        }
+        else{
+            pan_vel = pan_dot;
+        }
+
+        wz = - ( Kw*err + Jv(0)*vx + Jv(1)*vy)/Jw(2) - pan_vel;
+
         wz = (wz > - ANGULAR_VEL_MAX) ? ( (wz < ANGULAR_VEL_MAX) ? (wz) : (ANGULAR_VEL_MAX) ) : (-ANGULAR_VEL_MAX) ;//*/
-
-        std::cout << "Kw*err: " << Kw*err << std::endl;
-        std::cout << "Jvx: " << Jv(0) << std::endl;
-        std::cout << "Jvy: " << Jv(1) << std::endl;
-        std::cout << "Jwz: " << Jw(2) << std::endl;
-        std::cout << "Jvx*vx: " << Jv(0)*vx << std::endl;
-        std::cout << "Jvy*vy: " << Jv(1)*vy << std::endl;
-        std::cout << "visual error: " << err << std::endl;
-        std::cout << "theta error: " << theta_err << std::endl;
-        std::cout << "pan_dot: " << pan_dot << std::endl;
-        std::cout << "wz: " << wz << std::endl;
-        std::cout << "diff_qp: " << diff_qp << std::endl;//*/
-        std::cout << "filtered_qp:" << filtered_qp << std::endl << std::endl;
 
         if((!VREP_SIM && move_robot) || (VREP_SIM && move_robot)){
             u_pan = u_pan_old + pan_dot*Tc;
@@ -1687,8 +1713,9 @@ void of_driving::computeRobotVelocities(bool move_robot, bool narrowCheck){
             u_pan = (u_pan < MAXYAW) ? ( (u_pan > MINYAW) ? (u_pan) : (MINYAW) ) : (MAXYAW) ;
         }
 
+
         //std::cout << "pan_dot: " << pan_dot << std::endl;
-        //std::cout << "u_pan: " << u_pan << std::endl;
+        //std::cout << "u_pan: " << u_pan << std::endl << std::endl;
 
         //applyPanCmdonNAOqi(move_robot);
         old_real_pan = real_pan;
@@ -1831,6 +1858,8 @@ void of_driving::callNaoqiMove(bool *move_robot, char* key){
             set_linearVel(LINEAR_VEL_MAX);
             set_angVel(wz);
             motionPtr->move(vx,vy,wz);//FRAME_ROBOT
+            //qi::os::msleep(50);
+            //std::cout << "applying [" << vx << ", " << vy << ", " << wz << "] velocities on the robot ..." << std::endl;
         }
         else{
             set_angVel(0.0);
@@ -1949,6 +1978,25 @@ void of_driving::set_cameraPose(std::vector<float> pose){
     W.topLeftCorner(3,3) = cameraR;
     W.topRightCorner(3,3) = tskew*cameraR;
     W.bottomRightCorner(3,3) = cameraR;
+
+
+    std::cout << "ROLL-PITCH-YAW ANGLES of ROTATION MATRIX of W: " << std::endl;
+    double pitch_p = atan2(-cameraR(2,0),sqrt(cameraR(2,1)*cameraR(2,1) + cameraR(2,2)*cameraR(2,2)));
+    double pitch_m = atan2(-cameraR(2,0),- sqrt(cameraR(2,1)*cameraR(2,1) + cameraR(2,2)*cameraR(2,2)));
+    double roll_p = atan2(cameraR(2,1)/cos(pitch_p),cameraR(2,2)/cos(pitch_p));
+    double roll_m = atan2(cameraR(2,1)/cos(pitch_m),cameraR(2,2)/cos(pitch_m));
+    double yaw_p = atan2(cameraR(1,0)/cos(pitch_p),cameraR(0,0)/cos(pitch_p));
+    double yaw_m = atan2(cameraR(1,0)/cos(pitch_m),cameraR(0,0)/cos(pitch_m));
+
+    std::cout << "\tCONFIGURATION 1: " << std::endl;
+    std::cout << "\t\troll: " << roll_p*180./M_PI << std::endl;
+    std::cout << "\t\tpitch: " << pitch_p*180./M_PI << std::endl;
+    std::cout << "\t\tyaw: " << yaw_p*180./M_PI << std::endl;
+
+    std::cout << "\n\tCONFIGURATION 2: " << std::endl;
+    std::cout << "\t\troll: " << roll_m*180./M_PI << std::endl;
+    std::cout << "\t\tpitch: " << pitch_m*180./M_PI << std::endl;
+    std::cout << "\t\tyaw: " << yaw_m*180./M_PI << std::endl;
 
 }
 
